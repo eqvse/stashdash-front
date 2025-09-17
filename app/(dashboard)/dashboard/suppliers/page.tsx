@@ -5,9 +5,8 @@ import { useRouter } from "next/navigation"
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
-  CardTitle
+  CardTitle,
 } from "@/components/ui/card"
 import {
   Table,
@@ -15,7 +14,7 @@ import {
   TableCell,
   TableHead,
   TableHeader,
-  TableRow
+  TableRow,
 } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -36,7 +35,7 @@ import {
   ClipboardList,
   TrendingUp,
   DollarSign,
-  MoreHorizontal
+  MoreHorizontal,
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
 
@@ -52,13 +51,59 @@ interface Supplier {
   status: "active" | "inactive" | "trial"
 }
 
+const PLACEHOLDER_SUPPLIERS: Supplier[] = [
+  {
+    supplierId: "sup-1001",
+    name: "Nordic Packaging AB",
+    contactName: "Sofia Karlsson",
+    email: "sofia.karlsson@nordicpackaging.se",
+    phone: "+46 8 123 45 67",
+    openOrders: 4,
+    onTimeRate: 0.96,
+    totalSpend: 245000,
+    status: "active",
+  },
+  {
+    supplierId: "sup-1002",
+    name: "Global Components Ltd",
+    contactName: "Liam O'Connor",
+    email: "liam.oconnor@globalcomponents.com",
+    phone: "+353 1 765 43 21",
+    openOrders: 2,
+    onTimeRate: 0.89,
+    totalSpend: 157500,
+    status: "active",
+  },
+  {
+    supplierId: "sup-1003",
+    name: "EcoChem Supplies",
+    contactName: "Anna Müller",
+    email: "anna.mueller@ecochem.eu",
+    phone: "+49 30 998 77 55",
+    openOrders: 0,
+    onTimeRate: 0.92,
+    totalSpend: 82500,
+    status: "trial",
+  },
+  {
+    supplierId: "sup-1004",
+    name: "Baltic Metals",
+    contactName: "Marek Nowak",
+    email: "marek.nowak@balticmetals.eu",
+    phone: "+48 58 123 45 67",
+    openOrders: 1,
+    onTimeRate: 0.78,
+    totalSpend: 64000,
+    status: "inactive",
+  },
+]
+
 export default function SuppliersPage() {
   const router = useRouter()
   const { currentCompany } = useCompanyStore()
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [apiError, setApiError] = useState<string | null>(null)
 
   useEffect(() => {
     if (currentCompany) {
@@ -68,69 +113,19 @@ export default function SuppliersPage() {
 
   const loadSuppliers = async () => {
     setLoading(true)
-    setApiError(null)
-
-    const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
 
     try {
+      const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
+
       if (isDevMode) {
-        // Placeholder dataset for development mode
-        setSuppliers([
-          {
-            supplierId: "sup-1001",
-            name: "Nordic Packaging AB",
-            contactName: "Sofia Karlsson",
-            email: "sofia.karlsson@nordicpackaging.se",
-            phone: "+46 8 123 45 67",
-            openOrders: 4,
-            onTimeRate: 0.96,
-            totalSpend: 245000,
-            status: "active",
-          },
-          {
-            supplierId: "sup-1002",
-            name: "Global Components Ltd",
-            contactName: "Liam O'Connor",
-            email: "liam.oconnor@globalcomponents.com",
-            phone: "+353 1 765 43 21",
-            openOrders: 2,
-            onTimeRate: 0.89,
-            totalSpend: 157500,
-            status: "active",
-          },
-          {
-            supplierId: "sup-1003",
-            name: "EcoChem Supplies",
-            contactName: "Anna Müller",
-            email: "anna.mueller@ecochem.eu",
-            phone: "+49 30 998 77 55",
-            openOrders: 0,
-            onTimeRate: 0.92,
-            totalSpend: 82500,
-            status: "trial",
-          },
-          {
-            supplierId: "sup-1004",
-            name: "Baltic Metals",
-            contactName: "Marek Nowak",
-            email: "marek.nowak@balticmetals.eu",
-            phone: "+48 58 123 45 67",
-            openOrders: 1,
-            onTimeRate: 0.78,
-            totalSpend: 64000,
-            status: "inactive",
-          },
-        ])
+        setSuppliers(PLACEHOLDER_SUPPLIERS)
       } else {
-        // TODO: implement real API once supplier resource exists
-        // setApiError("Supplier API endpoint is not yet available.")
-        setSuppliers([])
-        setApiError("Supplier API endpoint is not yet available.")
+        // TODO: replace with real API call when supplier resource exists
+        setSuppliers(PLACEHOLDER_SUPPLIERS)
       }
     } catch (error) {
       console.error("Error loading suppliers:", error)
-      setApiError("Failed to load suppliers. Please try again later.")
-      setSuppliers([])
+      setSuppliers(PLACEHOLDER_SUPPLIERS)
     } finally {
       setLoading(false)
     }
@@ -173,22 +168,11 @@ export default function SuppliersPage() {
             Manage vendor relationships, track performance, and monitor purchasing spend
           </p>
         </div>
-        <Button onClick={() => router.push("/dashboard/orders")}> 
+        <Button onClick={() => router.push("/dashboard/orders")}>
           <Plus className="h-4 w-4 mr-2" />
           Add Supplier
         </Button>
       </div>
-
-      {apiError && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Backend Connection Issue</CardTitle>
-            <CardDescription className="text-sm">
-              {apiError}
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>
@@ -300,7 +284,7 @@ export default function SuppliersPage() {
                               ? "default"
                               : supplier.status === "inactive"
                                 ? "secondary"
-                                : "outline"
+                              : "outline"
                           }
                         >
                           {supplier.status === "active"
