@@ -38,65 +38,19 @@ import {
   MoreHorizontal,
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
+import { DEMO_SUPPLIERS, SUPPLIER_STORAGE_KEY, loadStoredSuppliers, saveSuppliers } from "@/lib/data/suppliers"
+import type { Supplier } from "@/types/supplier"
 
-interface Supplier {
-  supplierId: string
-  name: string
-  contactName?: string
-  email?: string
-  phone?: string
-  openOrders: number
-  onTimeRate: number
-  totalSpend: number
-  status: "active" | "inactive" | "trial"
+const seedIfEmpty = (suppliers: Supplier[]) => {
+  if (typeof window === "undefined") {
+    return
+  }
+
+  const raw = window.localStorage.getItem(SUPPLIER_STORAGE_KEY)
+  if (!raw) {
+    saveSuppliers(suppliers)
+  }
 }
-
-const PLACEHOLDER_SUPPLIERS: Supplier[] = [
-  {
-    supplierId: "sup-1001",
-    name: "Nordic Packaging AB",
-    contactName: "Sofia Karlsson",
-    email: "sofia.karlsson@nordicpackaging.se",
-    phone: "+46 8 123 45 67",
-    openOrders: 4,
-    onTimeRate: 0.96,
-    totalSpend: 245000,
-    status: "active",
-  },
-  {
-    supplierId: "sup-1002",
-    name: "Global Components Ltd",
-    contactName: "Liam O'Connor",
-    email: "liam.oconnor@globalcomponents.com",
-    phone: "+353 1 765 43 21",
-    openOrders: 2,
-    onTimeRate: 0.89,
-    totalSpend: 157500,
-    status: "active",
-  },
-  {
-    supplierId: "sup-1003",
-    name: "EcoChem Supplies",
-    contactName: "Anna Müller",
-    email: "anna.mueller@ecochem.eu",
-    phone: "+49 30 998 77 55",
-    openOrders: 0,
-    onTimeRate: 0.92,
-    totalSpend: 82500,
-    status: "trial",
-  },
-  {
-    supplierId: "sup-1004",
-    name: "Baltic Metals",
-    contactName: "Marek Nowak",
-    email: "marek.nowak@balticmetals.eu",
-    phone: "+48 58 123 45 67",
-    openOrders: 1,
-    onTimeRate: 0.78,
-    totalSpend: 64000,
-    status: "inactive",
-  },
-]
 
 export default function SuppliersPage() {
   const router = useRouter()
@@ -115,17 +69,12 @@ export default function SuppliersPage() {
     setLoading(true)
 
     try {
-      const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
-
-      if (isDevMode) {
-        setSuppliers(PLACEHOLDER_SUPPLIERS)
-      } else {
-        // TODO: replace with real API call when supplier resource exists
-        setSuppliers(PLACEHOLDER_SUPPLIERS)
-      }
+      const dataset = loadStoredSuppliers()
+      seedIfEmpty(dataset)
+      setSuppliers(dataset)
     } catch (error) {
       console.error("Error loading suppliers:", error)
-      setSuppliers(PLACEHOLDER_SUPPLIERS)
+      setSuppliers(DEMO_SUPPLIERS)
     } finally {
       setLoading(false)
     }
@@ -144,12 +93,12 @@ export default function SuppliersPage() {
     )
   }, [suppliers, searchTerm])
 
-  const totalSpend = suppliers.reduce((sum, supplier) => sum + supplier.totalSpend, 0)
+  const totalSpend = suppliers.reduce((sum, supplier) => sum + Number(supplier.totalSpend || 0), 0)
   const activeSuppliers = suppliers.filter((supplier) => supplier.status === "active").length
   const averageOnTimeRate = suppliers.length
-    ? suppliers.reduce((sum, supplier) => sum + supplier.onTimeRate, 0) / suppliers.length
+    ? suppliers.reduce((sum, supplier) => sum + Number(supplier.onTimeRate || 0), 0) / suppliers.length
     : 0
-  const openOrders = suppliers.reduce((sum, supplier) => sum + supplier.openOrders, 0)
+  const openOrders = suppliers.reduce((sum, supplier) => sum + Number(supplier.openOrders || 0), 0)
 
   if (loading) {
     return (
@@ -168,7 +117,7 @@ export default function SuppliersPage() {
             Manage vendor relationships, track performance, and monitor purchasing spend
           </p>
         </div>
-        <Button onClick={() => router.push("/dashboard/orders")}>
+        <Button onClick={() => router.push("/dashboard/suppliers/new")}>
           <Plus className="h-4 w-4 mr-2" />
           Add Supplier
         </Button>
@@ -275,7 +224,7 @@ export default function SuppliersPage() {
                     <TableCell>{supplier.phone ?? "—"}</TableCell>
                     <TableCell className="text-right">{supplier.openOrders}</TableCell>
                     <TableCell className="text-right">{(supplier.onTimeRate * 100).toFixed(0)}%</TableCell>
-                    <TableCell className="text-right">${supplier.totalSpend.toLocaleString()}</TableCell>
+                    <TableCell className="text-right">${Number(supplier.totalSpend || 0).toLocaleString()}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">
                         <Badge
