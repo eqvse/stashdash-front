@@ -57,7 +57,7 @@ export interface Product {
   heightMm?: number
   weightG?: number
   costMethod?: 'AVG' | 'FIFO' | 'LIFO' | 'STANDARD'
-  vatRate?: number
+  vatRate?: string
   isBatchTracked?: boolean
   isSerialTracked?: boolean
   isActive?: boolean
@@ -233,7 +233,7 @@ export interface ProductInput {
   heightMm?: number
   weightG?: number
   costMethod?: 'AVG' | 'FIFO' | 'LIFO' | 'STANDARD'
-  vatRate?: number
+  vatRate?: string
   isBatchTracked?: boolean
   isSerialTracked?: boolean
   isActive?: boolean

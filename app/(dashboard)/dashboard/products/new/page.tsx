@@ -70,6 +70,8 @@ export default function AddProductPage() {
       const productData = {
         ...data,
         company: `/api/companies/${currentCompany.companyId}`,
+        // Convert vatRate to string for backend
+        vatRate: String(data.vatRate),
         // Remove empty optional fields
         lengthMm: data.lengthMm || undefined,
         widthMm: data.widthMm || undefined,
