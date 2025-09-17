@@ -317,14 +317,29 @@ export default function ProductsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              router.push(`/dashboard/products/${product.productId}/edit`)
+                            }}
+                          >
                             <Edit className="mr-2 h-4 w-4" />
                             Edit
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              router.push(`/dashboard/products/${product.productId}`)
+                            }}
+                          >
                             View Details
                           </DropdownMenuItem>
-                          <DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={(event) => {
+                              event.preventDefault()
+                              router.push(`/dashboard/products/${product.productId}/stock`)
+                            }}
+                          >
                             View Stock Levels
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
