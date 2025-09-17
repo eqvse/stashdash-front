@@ -130,7 +130,7 @@ export default function SuppliersPage() {
             Manage vendor relationships, track performance, and monitor purchasing spend
           </p>
         </div>
-        <Button onClick={() => router.push("/dashboard/suppliers/new")}>
+        <Button type="button" onClick={() => router.push("/dashboard/suppliers/new")}>
           <Plus className="h-4 w-4 mr-2" />
           Add Supplier
         </Button>
@@ -207,7 +207,7 @@ export default function SuppliersPage() {
                   className="pl-8 w-[260px]"
                 />
               </div>
-              <Button variant="outline" onClick={loadSuppliers}>
+              <Button type="button" variant="outline" onClick={loadSuppliers}>
                 Refresh
               </Button>
             </div>
