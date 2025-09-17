@@ -13,7 +13,9 @@ import type {
   PurchaseOrderInput,
   PurchaseOrderLine,
   Company,
-  CompanyUser
+  CompanyUser,
+  Supplier,
+  SupplierInput
 } from '@/types/api'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
@@ -164,6 +166,53 @@ export class ApiClient {
       ...data,
       company: `/api/companies/${data.company}`
     })
+  }
+
+  // Suppliers
+  async getSuppliers(filters: {
+    companyId: string
+    searchTerm?: string
+    status?: SupplierInput['status']
+  }): Promise<ApiResponse<Supplier>> {
+    const params = new URLSearchParams()
+    params.append('company', `/api/companies/${filters.companyId}`)
+
+    if (filters.searchTerm) {
+      params.append('name', filters.searchTerm)
+    }
+
+    if (filters.status) {
+      params.append('status', filters.status)
+    }
+
+    const query = params.toString()
+    const suffix = query ? `?${query}` : ''
+    return this.request('GET', `/suppliers${suffix}`)
+  }
+
+  async getSupplier(id: string): Promise<Supplier> {
+    return this.request('GET', `/suppliers/${id}`)
+  }
+
+  async createSupplier(data: SupplierInput): Promise<Supplier> {
+    return this.request('POST', '/suppliers', {
+      ...data,
+      company: `/api/companies/${data.company}`
+    })
+  }
+
+  async updateSupplier(id: string, data: Partial<SupplierInput>): Promise<Supplier> {
+    const payload: Record<string, unknown> = { ...data }
+
+    if (data.company) {
+      payload.company = `/api/companies/${data.company}`
+    }
+
+    return this.request('PUT', `/suppliers/${id}`, payload)
+  }
+
+  async deleteSupplier(id: string): Promise<void> {
+    await this.request('DELETE', `/suppliers/${id}`)
   }
 
   // Inventory

@@ -7,6 +7,7 @@ import {
   CardContent,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card"
 import {
   Table,
@@ -38,19 +39,8 @@ import {
   MoreHorizontal,
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
-import { DEMO_SUPPLIERS, SUPPLIER_STORAGE_KEY, loadStoredSuppliers, saveSuppliers } from "@/lib/data/suppliers"
-import type { Supplier } from "@/types/supplier"
-
-const seedIfEmpty = (suppliers: Supplier[]) => {
-  if (typeof window === "undefined") {
-    return
-  }
-
-  const raw = window.localStorage.getItem(SUPPLIER_STORAGE_KEY)
-  if (!raw) {
-    saveSuppliers(suppliers)
-  }
-}
+import { apiClient } from "@/lib/api/client"
+import type { Supplier } from "@/types/api"
 
 export default function SuppliersPage() {
   const router = useRouter()
@@ -58,6 +48,7 @@ export default function SuppliersPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [apiError, setApiError] = useState<string | null>(null)
 
   useEffect(() => {
     if (currentCompany) {
@@ -67,14 +58,26 @@ export default function SuppliersPage() {
 
   const loadSuppliers = async () => {
     setLoading(true)
+    setApiError(null)
 
     try {
-      const dataset = loadStoredSuppliers()
-      seedIfEmpty(dataset)
-      setSuppliers(dataset)
+      if (!currentCompany) {
+        setSuppliers([])
+        return
+      }
+
+      const response = await apiClient.getSuppliers({
+        companyId: currentCompany.companyId,
+      })
+      setSuppliers(response.member ?? [])
     } catch (error) {
       console.error("Error loading suppliers:", error)
-      setSuppliers(DEMO_SUPPLIERS)
+      setApiError(
+        error instanceof Error
+          ? error.message
+          : "Failed to load suppliers. Please try again."
+      )
+      setSuppliers([])
     } finally {
       setLoading(false)
     }
@@ -100,6 +103,16 @@ export default function SuppliersPage() {
     : 0
   const openOrders = suppliers.reduce((sum, supplier) => sum + Number(supplier.openOrders || 0), 0)
 
+  if (!currentCompany) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-muted-foreground">
+          Select or create a company to manage suppliers.
+        </div>
+      </div>
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-96">
@@ -122,6 +135,17 @@ export default function SuppliersPage() {
           Add Supplier
         </Button>
       </div>
+
+      {apiError && (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Unable to reach supplier API</CardTitle>
+            <CardDescription className="text-sm">
+              {apiError}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       <div className="grid gap-4 md:grid-cols-4">
         <Card>

@@ -21,21 +21,15 @@ import {
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { ArrowLeft, Loader2, Save } from "lucide-react"
-import { loadStoredSuppliers, saveSuppliers } from "@/lib/data/suppliers"
-import type { SupplierStatus } from "@/types/supplier"
+import { useCompanyStore } from "@/stores/company"
+import { apiClient } from "@/lib/api/client"
+import type { SupplierStatus, SupplierInput } from "@/types/api"
 
 const statusOptions: SupplierStatus[] = ["active", "inactive", "trial"]
 
-const getGeneratedSupplierId = (): string => {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return `sup-${crypto.randomUUID()}`
-  }
-
-  return `sup-${Date.now().toString(36)}`
-}
-
 export default function NewSupplierPage() {
   const router = useRouter()
+  const { currentCompany } = useCompanyStore()
   const [name, setName] = useState("")
   const [contactName, setContactName] = useState("")
   const [email, setEmail] = useState("")
@@ -47,6 +41,8 @@ export default function NewSupplierPage() {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const formDisabled = !currentCompany || isSubmitting
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
@@ -55,25 +51,28 @@ export default function NewSupplierPage() {
       return
     }
 
+    if (!currentCompany) {
+      setError("No company selected. Choose a company before creating suppliers.")
+      return
+    }
+
     setIsSubmitting(true)
     setError(null)
 
     try {
-      const existing = loadStoredSuppliers()
-      const newSupplier = {
-        supplierId: getGeneratedSupplierId(),
+      const payload: SupplierInput = {
+        company: currentCompany.companyId,
         name: name.trim(),
         contactName: contactName.trim() || undefined,
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
-        openOrders: 0,
+        status,
         onTimeRate: Math.min(100, Math.max(0, Number(onTimeRate || 0))) / 100,
         totalSpend: Number(totalSpend) || 0,
-        status,
         notes: notes.trim() || undefined,
       }
 
-      saveSuppliers([...existing, newSupplier])
+      await apiClient.createSupplier(payload)
 
       router.push("/dashboard/suppliers")
     } catch (submissionError) {
@@ -98,7 +97,11 @@ export default function NewSupplierPage() {
             </p>
           </div>
         </div>
-        <Button form="new-supplier-form" type="submit" disabled={isSubmitting}>
+        <Button
+          form="new-supplier-form"
+          type="submit"
+          disabled={formDisabled}
+        >
           {isSubmitting ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           ) : (
@@ -107,6 +110,16 @@ export default function NewSupplierPage() {
           {isSubmitting ? "Saving..." : "Save Supplier"}
         </Button>
       </div>
+
+      {!currentCompany && (
+        <Card className="border-yellow-200 bg-yellow-50">
+          <CardHeader className="py-3">
+            <CardTitle className="text-sm">
+              Select a company before creating suppliers.
+            </CardTitle>
+          </CardHeader>
+        </Card>
+      )}
 
       <form id="new-supplier-form" className="space-y-6" onSubmit={handleSubmit}>
         <Card>
@@ -125,6 +138,7 @@ export default function NewSupplierPage() {
                 value={name}
                 onChange={(event) => setName(event.target.value)}
                 required
+                disabled={formDisabled}
               />
             </div>
 
@@ -135,6 +149,7 @@ export default function NewSupplierPage() {
                 placeholder="Contact person"
                 value={contactName}
                 onChange={(event) => setContactName(event.target.value)}
+                disabled={formDisabled}
               />
             </div>
 
@@ -146,6 +161,7 @@ export default function NewSupplierPage() {
                 placeholder="contact@supplier.com"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
+                disabled={formDisabled}
               />
             </div>
 
@@ -156,6 +172,7 @@ export default function NewSupplierPage() {
                 placeholder="+46 8 123 45 67"
                 value={phone}
                 onChange={(event) => setPhone(event.target.value)}
+                disabled={formDisabled}
               />
             </div>
 
@@ -173,6 +190,11 @@ export default function NewSupplierPage() {
                   ))}
                 </SelectContent>
               </Select>
+              {!currentCompany && (
+                <p className="text-xs text-muted-foreground">
+                  Select a company to enable editing.
+                </p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -185,6 +207,7 @@ export default function NewSupplierPage() {
                 step={1}
                 value={onTimeRate}
                 onChange={(event) => setOnTimeRate(event.target.value)}
+                disabled={formDisabled}
               />
             </div>
 
@@ -197,6 +220,7 @@ export default function NewSupplierPage() {
                 step={100}
                 value={totalSpend}
                 onChange={(event) => setTotalSpend(event.target.value)}
+                disabled={formDisabled}
               />
             </div>
 
@@ -208,6 +232,7 @@ export default function NewSupplierPage() {
                 value={notes}
                 onChange={(event) => setNotes(event.target.value)}
                 rows={4}
+                disabled={formDisabled}
               />
             </div>
           </CardContent>

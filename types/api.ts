@@ -171,6 +171,36 @@ export interface PurchaseOrderLine {
   qtyInvoiced: number
 }
 
+export type SupplierStatus = 'active' | 'inactive' | 'trial'
+
+export interface Supplier {
+  supplierId: string
+  company: string | Company
+  name: string
+  contactName?: string
+  email?: string
+  phone?: string
+  status: SupplierStatus
+  onTimeRate: number
+  totalSpend: number
+  openOrders?: number
+  notes?: string
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface SupplierInput {
+  company: string
+  name: string
+  contactName?: string
+  email?: string
+  phone?: string
+  status: SupplierStatus
+  onTimeRate?: number
+  totalSpend?: number
+  notes?: string
+}
+
 export interface PriceList {
   priceListId: string
   name: string
