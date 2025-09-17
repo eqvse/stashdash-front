@@ -60,6 +60,7 @@ export default function NewSupplierPage() {
     setError(null)
 
     try {
+      const clampedRate = Math.min(100, Math.max(0, Number(onTimeRate || 0)))
       const payload: SupplierInput = {
         company: currentCompany.companyId,
         name: name.trim(),
@@ -67,8 +68,8 @@ export default function NewSupplierPage() {
         email: email.trim() || undefined,
         phone: phone.trim() || undefined,
         status,
-        onTimeRate: Math.min(100, Math.max(0, Number(onTimeRate || 0))) / 100,
-        totalSpend: Number(totalSpend) || 0,
+        onTimeRate: (clampedRate / 100).toFixed(4),
+        totalSpend: Number(totalSpend || 0).toFixed(2),
         notes: notes.trim() || undefined,
       }
 

@@ -181,8 +181,8 @@ export interface Supplier {
   email?: string
   phone?: string
   status: SupplierStatus
-  onTimeRate: number
-  totalSpend: number
+  onTimeRate: string
+  totalSpend: string
   openOrders?: number
   notes?: string
   createdAt?: string
@@ -196,8 +196,8 @@ export interface SupplierInput {
   email?: string
   phone?: string
   status: SupplierStatus
-  onTimeRate?: number
-  totalSpend?: number
+  onTimeRate?: string
+  totalSpend?: string
   notes?: string
 }
 
