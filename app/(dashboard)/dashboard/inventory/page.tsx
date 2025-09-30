@@ -1,24 +1,37 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { 
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import {
   Package,
   Search,
   Plus,
   Minus,
-  ArrowUpDown,
-  Filter,
   Download,
   Upload
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
 import { apiClient } from "@/lib/api/client"
 import { InventoryBalance, Product, Warehouse } from "@/types/api"
+
+type FeedbackMessage = {
+  type: "success" | "error"
+  message: string
+}
+
+const normalizeId = (value: string) => {
+  if (!value) return value
+  const parts = value.split("/")
+  return parts[parts.length - 1] || value
+}
 
 export default function InventoryPage() {
   const { currentCompany } = useCompanyStore()
@@ -28,6 +41,17 @@ export default function InventoryPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>("all")
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<FeedbackMessage | null>(null)
+  const [isAdjustDialogOpen, setIsAdjustDialogOpen] = useState(false)
+  const [adjustmentProductId, setAdjustmentProductId] = useState("")
+  const [adjustmentWarehouseId, setAdjustmentWarehouseId] = useState("")
+  const [adjustmentQty, setAdjustmentQty] = useState("")
+  const [adjustmentNote, setAdjustmentNote] = useState("")
+  const [adjustmentError, setAdjustmentError] = useState<string | null>(null)
+  const [isSubmittingAdjustment, setIsSubmittingAdjustment] = useState(false)
+
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
 
   useEffect(() => {
     if (currentCompany) {
@@ -35,18 +59,29 @@ export default function InventoryPage() {
     }
   }, [currentCompany])
 
+  useEffect(() => {
+    if (!isAdjustDialogOpen) {
+      setAdjustmentProductId("")
+      setAdjustmentWarehouseId("")
+      setAdjustmentQty("")
+      setAdjustmentNote("")
+      setAdjustmentError(null)
+    }
+  }, [isAdjustDialogOpen])
+
   const loadInventoryData = async () => {
+    if (!currentCompany) {
+      setInventoryData([])
+      setProducts({})
+      setWarehouses({})
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
-    try {
-      // For now, we'll show sample data since the backend isn't connected
-      // Once the backend is properly configured, this will fetch real data
-      
-      // This would normally be:
-      // const balances = await apiClient.getInventoryBalances()
-      // const productsResponse = await apiClient.getProducts({ company: currentCompany.companyId })
-      // const warehousesResponse = await apiClient.getWarehouses(currentCompany.companyId)
-      
-      // Sample data for UI demonstration
+    setLoadError(null)
+
+    if (isDevMode) {
       setInventoryData([
         {
           product: "prod-1",
@@ -55,7 +90,7 @@ export default function InventoryPage() {
           qtyCommitted: 20,
           qtyInTransit: 30,
           qtyAvailable: 130,
-          avgUnitCost: 45.00,
+          avgUnitCost: 45.0,
           stockValue: 6750,
           reorderPoint: 50,
           reorderQty: 100
@@ -67,7 +102,7 @@ export default function InventoryPage() {
           qtyCommitted: 10,
           qtyInTransit: 0,
           qtyAvailable: 15,
-          avgUnitCost: 120.00,
+          avgUnitCost: 120.0,
           stockValue: 3000,
           reorderPoint: 30,
           reorderQty: 50
@@ -79,7 +114,7 @@ export default function InventoryPage() {
           qtyCommitted: 50,
           qtyInTransit: 100,
           qtyAvailable: 450,
-          avgUnitCost: 5.50,
+          avgUnitCost: 5.5,
           stockValue: 2750,
           reorderPoint: 200,
           reorderQty: 500
@@ -87,20 +122,93 @@ export default function InventoryPage() {
       ])
 
       setProducts({
-        "prod-1": { productId: "prod-1", sku: "LAPTOP-001", name: "Business Laptop Pro", company: "", createdAt: "", updatedAt: "" },
-        "prod-2": { productId: "prod-2", sku: "MOUSE-W01", name: "Wireless Mouse", company: "", createdAt: "", updatedAt: "" },
-        "prod-3": { productId: "prod-3", sku: "CABLE-USB", name: "USB-C Cable 2m", company: "", createdAt: "", updatedAt: "" }
+        "prod-1": {
+          productId: "prod-1",
+          sku: "LAPTOP-001",
+          name: "Business Laptop Pro",
+          company: "",
+          createdAt: "",
+          updatedAt: ""
+        },
+        "prod-2": {
+          productId: "prod-2",
+          sku: "MOUSE-W01",
+          name: "Wireless Mouse",
+          company: "",
+          createdAt: "",
+          updatedAt: ""
+        },
+        "prod-3": {
+          productId: "prod-3",
+          sku: "CABLE-USB",
+          name: "USB-C Cable 2m",
+          company: "",
+          createdAt: "",
+          updatedAt: ""
+        }
       })
 
       setWarehouses({
-        "wh-1": { warehouseId: "wh-1", code: "MAIN", name: "Main Warehouse", company: "" },
-        "wh-2": { warehouseId: "wh-2", code: "EAST", name: "East Coast DC", company: "" }
+        "wh-1": {
+          warehouseId: "wh-1",
+          code: "MAIN",
+          name: "Main Warehouse",
+          company: ""
+        },
+        "wh-2": {
+          warehouseId: "wh-2",
+          code: "EAST",
+          name: "East Coast DC",
+          company: ""
+        }
       })
 
+      setLoading(false)
+      return
+    }
+
+    try {
+      const [productsResponse, warehousesResponse] = await Promise.all([
+        apiClient.getProducts({ company: currentCompany.companyId }),
+        apiClient.getWarehouses(currentCompany.companyId)
+      ])
+
+      const productMap: Record<string, Product> = {}
+      productsResponse.member?.forEach((product) => {
+        productMap[product.productId] = product
+      })
+
+      const warehouseMap: Record<string, Warehouse> = {}
+      warehousesResponse.member?.forEach((warehouse) => {
+        warehouseMap[warehouse.warehouseId] = warehouse
+      })
+
+      const companyProductIds = new Set(Object.keys(productMap))
+      const companyWarehouseIds = new Set(Object.keys(warehouseMap))
+
+      const balancesResponse = await apiClient.getInventoryBalances({ itemsPerPage: 100 })
+
+      const normalizedBalances = (balancesResponse.member ?? [])
+        .map((balance) => ({
+          ...balance,
+          product: normalizeId(balance.product),
+          warehouse: normalizeId(balance.warehouse)
+        }))
+        .filter((balance) => (
+          companyProductIds.has(balance.product) && companyWarehouseIds.has(balance.warehouse)
+        ))
+
+      setProducts(productMap)
+      setWarehouses(warehouseMap)
+      setInventoryData(normalizedBalances)
     } catch (error) {
       console.error("Error loading inventory data:", error)
-      // Show sample data even on error for demonstration
       setInventoryData([])
+      setLoadError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load inventory data. Please try again."
+      )
     } finally {
       setLoading(false)
     }
@@ -113,18 +221,90 @@ export default function InventoryPage() {
     return { label: "In Stock", variant: "default" as const }
   }
 
+  const handleRowAdjust = (productId: string, warehouseId: string, qtyHint: number) => {
+    setFeedback(null)
+    setIsAdjustDialogOpen(true)
+    setAdjustmentProductId(productId)
+    setAdjustmentWarehouseId(warehouseId)
+    setAdjustmentQty(String(qtyHint))
+    setAdjustmentNote("")
+    setAdjustmentError(null)
+  }
+
+  const handleAdjustmentSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+
+    if (!currentCompany) {
+      setAdjustmentError("Select a company before adjusting stock.")
+      return
+    }
+
+    if (!adjustmentProductId) {
+      setAdjustmentError("Select a product to adjust.")
+      return
+    }
+
+    if (!adjustmentWarehouseId) {
+      setAdjustmentError("Select a warehouse for the adjustment.")
+      return
+    }
+
+    const qty = Number(adjustmentQty)
+    if (!Number.isFinite(qty) || qty === 0) {
+      setAdjustmentError("Enter a non-zero quantity adjustment.")
+      return
+    }
+
+    if (isDevMode) {
+      setAdjustmentError("Inventory adjustments are disabled while NEXT_PUBLIC_DEV_MODE is true.")
+      return
+    }
+
+    setIsSubmittingAdjustment(true)
+    setAdjustmentError(null)
+
+    try {
+      await apiClient.adjustInventory(
+        adjustmentProductId,
+        adjustmentWarehouseId,
+        qty,
+        adjustmentNote || undefined
+      )
+
+      setFeedback({
+        type: "success",
+        message: "Inventory adjusted successfully."
+      })
+
+      setIsAdjustDialogOpen(false)
+      await loadInventoryData()
+    } catch (error) {
+      console.error("Error adjusting inventory:", error)
+      setAdjustmentError(
+        error instanceof Error
+          ? error.message
+          : "Failed to adjust inventory. Please try again."
+      )
+    } finally {
+      setIsSubmittingAdjustment(false)
+    }
+  }
+
   const filteredInventory = inventoryData.filter(item => {
     const product = products[item.product]
     const warehouse = warehouses[item.warehouse]
-    
+
     const matchesSearch = searchTerm === "" || 
       product?.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       product?.sku.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesWarehouse = selectedWarehouse === "all" || item.warehouse === selectedWarehouse
     
-    return matchesSearch && matchesWarehouse
+    return matchesSearch && matchesWarehouse && (!!product || isDevMode)
   })
+
+  const warehouseOptions = Object.values(warehouses).sort((a, b) => a.name.localeCompare(b.name))
+  const productOptions = Object.values(products).sort((a, b) => a.name.localeCompare(b.name))
 
   if (loading) {
     return (
@@ -152,12 +332,157 @@ export default function InventoryPage() {
             <Download className="h-4 w-4 mr-2" />
             Export
           </Button>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" />
-            Adjust Stock
-          </Button>
+          <Dialog open={isAdjustDialogOpen} onOpenChange={setIsAdjustDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="h-4 w-4 mr-2" />
+                Adjust Stock
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Adjust Stock</DialogTitle>
+                <DialogDescription>
+                  Record a manual adjustment to update on-hand quantities.
+                </DialogDescription>
+              </DialogHeader>
+
+              {isDevMode && (
+                <div className="rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+                  Inventory adjustments are disabled while development mode is active.
+                </div>
+              )}
+
+              <form onSubmit={handleAdjustmentSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="adjust-product">Product</Label>
+                  <Select
+                    value={adjustmentProductId}
+                    onValueChange={setAdjustmentProductId}
+                    disabled={isSubmittingAdjustment || isDevMode || productOptions.length === 0}
+                  >
+                    <SelectTrigger id="adjust-product">
+                      <SelectValue placeholder={productOptions.length === 0 ? "No products available" : "Select a product"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {productOptions.length === 0 ? (
+                        <SelectItem value="__no-product" disabled>
+                          No products available
+                        </SelectItem>
+                      ) : (
+                        productOptions.map((product) => (
+                          <SelectItem key={product.productId} value={product.productId}>
+                            {product.name} ({product.sku})
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="adjust-warehouse">Warehouse</Label>
+                  <Select
+                    value={adjustmentWarehouseId}
+                    onValueChange={setAdjustmentWarehouseId}
+                    disabled={isSubmittingAdjustment || isDevMode || warehouseOptions.length === 0}
+                  >
+                    <SelectTrigger id="adjust-warehouse">
+                      <SelectValue placeholder={warehouseOptions.length === 0 ? "No warehouses available" : "Select a warehouse"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {warehouseOptions.length === 0 ? (
+                        <SelectItem value="__no-warehouse" disabled>
+                          No warehouses available
+                        </SelectItem>
+                      ) : (
+                        warehouseOptions.map((warehouse) => (
+                          <SelectItem key={warehouse.warehouseId} value={warehouse.warehouseId}>
+                            {warehouse.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="adjust-qty">Quantity Adjustment</Label>
+                  <Input
+                    id="adjust-qty"
+                    type="number"
+                    value={adjustmentQty}
+                    onChange={(event) => setAdjustmentQty(event.target.value)}
+                    placeholder="Enter quantity change (e.g. 5 or -3)"
+                    disabled={isSubmittingAdjustment || isDevMode}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Use positive numbers to add stock and negative numbers to remove stock.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="adjust-note">Reason (optional)</Label>
+                  <Textarea
+                    id="adjust-note"
+                    value={adjustmentNote}
+                    onChange={(event) => setAdjustmentNote(event.target.value)}
+                    placeholder="Add context for this adjustment"
+                    disabled={isSubmittingAdjustment || isDevMode}
+                    rows={3}
+                  />
+                </div>
+
+                {adjustmentError && (
+                  <div className="rounded-md border border-red-200 bg-red-50 p-2 text-sm text-red-700">
+                    {adjustmentError}
+                  </div>
+                )}
+
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsAdjustDialogOpen(false)}
+                    disabled={isSubmittingAdjustment}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    type="submit"
+                    disabled={
+                      isSubmittingAdjustment ||
+                      isDevMode ||
+                      productOptions.length === 0 ||
+                      warehouseOptions.length === 0
+                    }
+                  >
+                    {isSubmittingAdjustment ? "Saving..." : "Adjust Stock"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
       </div>
+
+      {loadError && (
+        <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {loadError}
+        </div>
+      )}
+
+      {feedback && (
+        <div
+          className={`rounded-md border p-3 text-sm ${
+            feedback.type === "success"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+              : "border-red-200 bg-red-50 text-red-700"
+          }`}
+        >
+          {feedback.message}
+        </div>
+      )}
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -227,9 +552,19 @@ export default function InventoryPage() {
                   className="pl-8 w-[300px]"
                 />
               </div>
-              <Button variant="outline" size="icon">
-                <Filter className="h-4 w-4" />
-              </Button>
+              <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
+                <SelectTrigger className="w-[200px]">
+                  <SelectValue placeholder="All warehouses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All warehouses</SelectItem>
+                  {warehouseOptions.map((warehouse) => (
+                    <SelectItem key={warehouse.warehouseId} value={warehouse.warehouseId}>
+                      {warehouse.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -264,9 +599,9 @@ export default function InventoryPage() {
                   const status = getStockStatus(item)
                   
                   return (
-                    <TableRow key={index}>
-                      <TableCell className="font-medium">{product?.name || 'Unknown'}</TableCell>
-                      <TableCell className="text-muted-foreground">{product?.sku || '-'}</TableCell>
+                    <TableRow key={`${item.product}-${item.warehouse}-${index}`}>
+                      <TableCell className="font-medium">{product?.name || "Unknown"}</TableCell>
+                      <TableCell className="text-muted-foreground">{product?.sku || "-"}</TableCell>
                       <TableCell>{warehouse?.name || 'Unknown'}</TableCell>
                       <TableCell className="text-right">{item.qtyOnHand}</TableCell>
                       <TableCell className="text-right">{item.qtyAvailable}</TableCell>
@@ -279,10 +614,22 @@ export default function InventoryPage() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex gap-1 justify-end">
-                          <Button size="icon" variant="ghost" className="h-8 w-8">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => handleRowAdjust(item.product, item.warehouse, 1)}
+                            disabled={isDevMode}
+                          >
                             <Plus className="h-4 w-4" />
                           </Button>
-                          <Button size="icon" variant="ghost" className="h-8 w-8">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-8 w-8"
+                            onClick={() => handleRowAdjust(item.product, item.warehouse, -1)}
+                            disabled={isDevMode}
+                          >
                             <Minus className="h-4 w-4" />
                           </Button>
                         </div>

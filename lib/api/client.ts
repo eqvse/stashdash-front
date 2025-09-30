@@ -4,6 +4,9 @@ import type {
   ApiError,
   Product,
   ProductInput,
+  ProductFamily,
+  ProductFamilyInput,
+  ProductVariantType,
   InventoryBalance,
   InventoryMovement,
   InventoryMovementInput,
@@ -58,8 +61,78 @@ export class ApiClient {
       const error: ApiError = await response.json()
       throw new Error(error.detail || `API request failed: ${error.title}`)
     }
-    
-    return response.json()
+
+    const payload = await response.json()
+    return this.normalizeCollectionPayload(payload) as T
+  }
+
+  private normalizeCollectionPayload(payload: unknown): unknown {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+      return payload
+    }
+
+    if ('hydra:member' in payload) {
+      const collection = payload as Record<string, unknown>
+      return {
+        ...collection,
+        member: collection['hydra:member'],
+        totalItems: collection['hydra:totalItems'],
+        view: collection['hydra:view'],
+      }
+    }
+
+    return payload
+  }
+
+  private parseNumber(value: unknown, fallback = 0): number {
+    if (typeof value === 'number') {
+      return value
+    }
+
+    if (typeof value === 'string' && value.trim().length > 0) {
+      const parsed = parseFloat(value)
+      return Number.isNaN(parsed) ? fallback : parsed
+    }
+
+    return fallback
+  }
+
+  private parseOptionalNumber(value: unknown): number | undefined {
+    if (value === undefined || value === null) {
+      return undefined
+    }
+
+    if (typeof value === 'number') {
+      return value
+    }
+
+    if (typeof value === 'string') {
+      const trimmed = value.trim()
+      if (trimmed.length === 0) {
+        return undefined
+      }
+
+      const parsed = parseFloat(trimmed)
+      return Number.isNaN(parsed) ? undefined : parsed
+    }
+
+    return undefined
+  }
+
+  private normalizeInventoryBalancePayload(raw: any): InventoryBalance {
+    return {
+      ...raw,
+      qtyOnHand: this.parseNumber(raw.qtyOnHand),
+      qtyCommitted: this.parseNumber(raw.qtyCommitted),
+      qtyInTransit: this.parseNumber(raw.qtyInTransit),
+      qtyAvailable: this.parseNumber(raw.qtyAvailable),
+      avgUnitCost: this.parseNumber(raw.avgUnitCost),
+      stockValue: this.parseNumber(raw.stockValue),
+      reorderPoint: this.parseOptionalNumber(raw.reorderPoint),
+      reorderQty: this.parseOptionalNumber(raw.reorderQty),
+      safetyStock: this.parseOptionalNumber(raw.safetyStock),
+      maxStockLevel: this.parseOptionalNumber(raw.maxStockLevel),
+    }
   }
 
   // Company methods
@@ -129,6 +202,65 @@ export class ApiClient {
 
   async deleteProduct(id: string): Promise<void> {
     return this.request('DELETE', `/products/${id}`)
+  }
+
+  // Product families
+  async getProductFamilies(filters?: {
+    company?: string
+    familyName?: string
+    variantType?: ProductVariantType
+  }): Promise<ApiResponse<ProductFamily>> {
+    const params = new URLSearchParams()
+
+    if (filters?.company) {
+      const value = filters.company.includes('/api/companies/')
+        ? filters.company
+        : `/api/companies/${filters.company}`
+      params.append('company', value)
+    }
+
+    if (filters?.familyName) {
+      params.append('familyName', filters.familyName)
+    }
+
+    if (filters?.variantType) {
+      params.append('variantType', filters.variantType)
+    }
+
+    const query = params.toString()
+    const suffix = query ? `?${query}` : ''
+
+    return this.request('GET', `/product_families${suffix}`)
+  }
+
+  async createProductFamily(data: ProductFamilyInput): Promise<ProductFamily> {
+    const payload: Record<string, unknown> = {
+      familyName: data.familyName,
+      variantType: data.variantType,
+      expectedVariants: data.expectedVariants,
+      company: data.company.includes('/api/companies/')
+        ? data.company
+        : `/api/companies/${data.company}`,
+    }
+
+    if (data.baseSkuPattern) {
+      payload.baseSkuPattern = data.baseSkuPattern
+    }
+
+    if (data.familyCode) {
+      payload.familyCode = data.familyCode
+    }
+
+    if (data.notes) {
+      payload.notes = data.notes
+    }
+
+    return this.request('POST', '/product_families', payload)
+  }
+
+  async getProductFamily(id: string): Promise<ProductFamily> {
+    const familyId = id.includes('/') ? id.split('/').pop() ?? id : id
+    return this.request('GET', `/product_families/${familyId}`)
   }
 
   // Categories
@@ -220,26 +352,55 @@ export class ApiClient {
     productId: string,
     warehouseId: string
   ): Promise<InventoryBalance | null> {
-    const params = new URLSearchParams({
-      product: `/api/products/${productId}`,
-      warehouse: `/api/warehouses/${warehouseId}`
+    const result = await this.getInventoryBalances({
+      product: productId,
+      warehouse: warehouseId,
+      itemsPerPage: 1,
     })
-    const result = await this.request<ApiResponse<InventoryBalance>>(
-      'GET',
-      `/inventory_balances?${params}`
-    )
-    return result.member?.[0] || null
+
+    return result.member?.[0] ?? null
   }
 
   async getInventoryBalances(filters?: {
     product?: string
     warehouse?: string
+    page?: number
+    itemsPerPage?: number
   }): Promise<ApiResponse<InventoryBalance>> {
     const params = new URLSearchParams()
-    if (filters?.product) params.append('product', `/api/products/${filters.product}`)
-    if (filters?.warehouse) params.append('warehouse', `/api/warehouses/${filters.warehouse}`)
-    
-    return this.request('GET', `/inventory_balances?${params}`)
+
+    if (filters?.product) {
+      const value = filters.product.includes('/api/products/')
+        ? filters.product
+        : `/api/products/${filters.product}`
+      params.append('product', value)
+    }
+
+    if (filters?.warehouse) {
+      const value = filters.warehouse.includes('/api/warehouses/')
+        ? filters.warehouse
+        : `/api/warehouses/${filters.warehouse}`
+      params.append('warehouse', value)
+    }
+
+    if (filters?.page) {
+      params.append('page', String(filters.page))
+    }
+
+    if (filters?.itemsPerPage) {
+      params.append('itemsPerPage', String(filters.itemsPerPage))
+    }
+
+    const query = params.toString()
+    const suffix = query ? `?${query}` : ''
+    const result = await this.request<ApiResponse<InventoryBalance>>('GET', `/inventory_balances${suffix}`)
+
+    const normalizedMember = result.member?.map((balance) => this.normalizeInventoryBalancePayload(balance as any))
+
+    return {
+      ...result,
+      member: normalizedMember,
+    }
   }
 
   async createInventoryMovement(data: InventoryMovementInput): Promise<InventoryMovement> {
@@ -247,7 +408,10 @@ export class ApiClient {
       ...data,
       product: `/api/products/${data.product}`,
       warehouse: `/api/warehouses/${data.warehouse}`,
-      bin: data.bin ? `/api/stock_bins/${data.bin}` : undefined
+      bin: data.bin ? `/api/stock_bins/${data.bin}` : undefined,
+      // Convert qtyDelta and unitCost to strings as the API expects
+      qtyDelta: String(data.qtyDelta),
+      unitCost: String(data.unitCost)
     })
   }
 
@@ -255,11 +419,32 @@ export class ApiClient {
     product?: string
     warehouse?: string
     movementType?: string
+    company?: string
+    itemsPerPage?: number
   }): Promise<ApiResponse<InventoryMovement>> {
     const params = new URLSearchParams()
-    if (filters?.product) params.append('product', `/api/products/${filters.product}`)
-    if (filters?.warehouse) params.append('warehouse', `/api/warehouses/${filters.warehouse}`)
+    if (filters?.product) {
+      const value = filters.product.includes('/api/products/')
+        ? filters.product
+        : `/api/products/${filters.product}`
+      params.append('product', value)
+    }
+    if (filters?.warehouse) {
+      const value = filters.warehouse.includes('/api/warehouses/')
+        ? filters.warehouse
+        : `/api/warehouses/${filters.warehouse}`
+      params.append('warehouse', value)
+    }
     if (filters?.movementType) params.append('movementType', filters.movementType)
+    if (filters?.company) {
+      const value = filters.company.includes('/api/companies/')
+        ? filters.company
+        : `/api/companies/${filters.company}`
+      params.append('company', value)
+    }
+    if (filters?.itemsPerPage) {
+      params.append('itemsPerPage', String(filters.itemsPerPage))
+    }
     
     return this.request('GET', `/inventory_movements?${params}`)
   }

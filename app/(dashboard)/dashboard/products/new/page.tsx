@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import { productFormSchema, type ProductFormData } from "@/lib/validations/product"
 import { useCompanyStore } from "@/stores/company"
 import { apiClient } from "@/lib/api/client"
+import type { ProductInput } from "@/types/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -67,43 +68,63 @@ export default function AddProductPage() {
     setIsSubmitting(true)
     try {
       // Convert the form data to API format
-      const productData = {
-        ...data,
-        company: `/api/companies/${currentCompany.companyId}`,
-        // Convert vatRate to string for backend
-        vatRate: String(data.vatRate),
-        // Remove empty optional fields
-        lengthMm: data.lengthMm || undefined,
-        widthMm: data.widthMm || undefined,
-        heightMm: data.heightMm || undefined,
-        weightG: data.weightG || undefined,
-        eanCode: data.eanCode || undefined,
-        reorderPoint: data.reorderPoint || undefined,
-        reorderQty: data.reorderQty || undefined,
-        safetyStock: data.safetyStock || undefined,
-        maxStockLevel: data.maxStockLevel || undefined,
+      const toOptionalNumber = (value: unknown): number | undefined => {
+        return typeof value === "number" && !Number.isNaN(value)
+          ? value
+          : undefined
       }
 
-      console.log("Product data that would be submitted:", productData)
-      
-      // Since backend has SQL issues, show success message but don't actually call API
-      alert(`Product "${data.name}" (${data.sku}) created successfully!\n\nNote: This is currently saving to local storage since the backend has database issues. Once you fix the SQL column issue, this will save to the real database.`)
-      
-      // Save to localStorage for demonstration
-      const existingProducts = JSON.parse(localStorage.getItem('demo_products') || '[]')
-      existingProducts.push({
-        ...productData,
-        productId: `prod-${Date.now()}`,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      })
-      localStorage.setItem('demo_products', JSON.stringify(existingProducts))
-      
-      // Redirect back to products list
+      const productData: ProductInput = {
+        sku: data.sku.trim(),
+        name: data.name.trim(),
+        company: `/api/companies/${currentCompany.companyId}`,
+        abcClass: data.abcClass || undefined,
+        uom: data.uom,
+        costMethod: data.costMethod,
+        vatRate: String(data.vatRate),
+        isBatchTracked: data.isBatchTracked,
+        isSerialTracked: data.isSerialTracked,
+        isActive: data.isActive,
+        eanCode: data.eanCode?.trim() || undefined,
+        lengthMm: toOptionalNumber(data.lengthMm),
+        widthMm: toOptionalNumber(data.widthMm),
+        heightMm: toOptionalNumber(data.heightMm),
+        weightG: toOptionalNumber(data.weightG),
+        reorderPoint: toOptionalNumber(data.reorderPoint),
+        reorderQty: toOptionalNumber(data.reorderQty),
+        safetyStock: toOptionalNumber(data.safetyStock),
+        maxStockLevel: toOptionalNumber(data.maxStockLevel),
+      }
+
+      if (data.category?.startsWith("/api/categories/")) {
+        productData.category = data.category
+      }
+
+      const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
+
+      if (isDevMode) {
+        console.log("Development mode: saving product to localStorage", productData)
+        const existingProducts = JSON.parse(localStorage.getItem("demo_products") || "[]")
+        existingProducts.push({
+          ...productData,
+          productId: `prod-${Date.now()}`,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        })
+        localStorage.setItem("demo_products", JSON.stringify(existingProducts))
+      } else {
+        await apiClient.createProduct(productData)
+      }
+
+      alert(`Product "${data.name}" (${data.sku}) created successfully!`)
+
       router.push("/dashboard/products")
     } catch (error) {
       console.error("Error creating product:", error)
-      alert("Failed to create product. Please try again.")
+      const message = error instanceof Error
+        ? error.message
+        : "Failed to create product. Please try again."
+      alert(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -135,7 +156,11 @@ export default function AddProductPage() {
           >
             Cancel
           </Button>
-          <Button onClick={handleSubmit(onSubmit)} disabled={isSubmitting}>
+          <Button
+            type="button"
+            onClick={handleSubmit(onSubmit)}
+            disabled={isSubmitting}
+          >
             <Save className="h-4 w-4 mr-2" />
             {isSubmitting ? "Creating..." : "Create Product"}
           </Button>
@@ -538,7 +563,7 @@ export default function AddProductPage() {
                 {(watchBatchTracked || watchSerialTracked) && (
                   <div className="p-4 bg-muted rounded-lg">
                     <p className="text-sm">
-                      <strong>Note:</strong> When tracking is enabled, you'll need to provide
+                      <strong>Note:</strong> When tracking is enabled, you&apos;ll need to provide
                       {watchBatchTracked && watchSerialTracked && " batch/lot numbers and serial numbers"}
                       {watchBatchTracked && !watchSerialTracked && " batch/lot numbers"}
                       {!watchBatchTracked && watchSerialTracked && " serial numbers"}

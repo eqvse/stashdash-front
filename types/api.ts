@@ -5,13 +5,23 @@ export interface ApiResponse<T> {
   "@id"?: string
   "@type"?: string
   member?: T[]
+  "hydra:member"?: T[]
   totalItems?: number
+  "hydra:totalItems"?: number
   view?: {
     "@id": string
     first?: string
     last?: string
     next?: string
     previous?: string
+  }
+  "hydra:view"?: {
+    "@id": string
+    "@type"?: string
+    "hydra:first"?: string
+    "hydra:last"?: string
+    "hydra:next"?: string
+    "hydra:previous"?: string
   }
 }
 
@@ -61,6 +71,23 @@ export interface Product {
   isBatchTracked?: boolean
   isSerialTracked?: boolean
   isActive?: boolean
+  createdAt: string
+  updatedAt: string
+  variantAttributes?: Record<string, string | number | null>
+  family?: string | ProductFamily
+}
+
+export type ProductVariantType = 'size' | 'color' | 'size_color' | 'other'
+
+export interface ProductFamily {
+  productFamilyId: string
+  familyName: string
+  familyCode?: string
+  variantType: ProductVariantType
+  expectedVariants: string[]
+  baseSkuPattern?: string
+  notes?: string
+  company: string
   createdAt: string
   updatedAt: string
 }
@@ -127,6 +154,9 @@ export interface InventoryMovement {
   note?: string
   performedBy?: string
   performedAt: string
+  productName?: string
+  productDisplayName?: string
+  warehouseName?: string
 }
 
 export interface StockLot {
@@ -237,6 +267,16 @@ export interface ProductInput {
   isBatchTracked?: boolean
   isSerialTracked?: boolean
   isActive?: boolean
+}
+
+export interface ProductFamilyInput {
+  familyName: string
+  variantType: ProductVariantType
+  expectedVariants: string[]
+  baseSkuPattern?: string
+  familyCode?: string
+  notes?: string
+  company: string
 }
 
 export interface InventoryMovementInput {

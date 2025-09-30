@@ -2,7 +2,15 @@
 
 import { use, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, Save } from "lucide-react"
+import {
+  ArrowLeft,
+  Save,
+  Package,
+  Ruler,
+  DollarSign,
+  BarChart3,
+  Settings,
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -15,12 +23,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Badge } from "@/components/ui/badge"
 import { apiClient } from "@/lib/api/client"
 import { useCompanyStore } from "@/stores/company"
 import type { Product, ProductInput } from "@/types/api"
 
 const ABC_NONE_VALUE = "__none__"
+
+const toStringOrEmpty = (value: unknown): string => {
+  if (value === null || value === undefined) return ""
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : ""
+  }
+  if (typeof value === "string") {
+    return value
+  }
+  return ""
+}
+
+const toVatRateString = (value: unknown): string => {
+  const result = toStringOrEmpty(value)
+  return result === "" ? "25" : result
+}
 
 interface EditProductPageProps {
   params: Promise<{
@@ -31,14 +56,23 @@ interface EditProductPageProps {
 type ProductEditFormState = {
   sku: string
   name: string
+  category: string
   eanCode: string
-  abcClass: "A" | "B" | "C" | null
+  abcClass: "A" | "B" | "C" | typeof ABC_NONE_VALUE
   uom: string
+  lengthMm: string
+  widthMm: string
+  heightMm: string
+  weightG: string
   costMethod: ProductInput["costMethod"]
-  vatRate: number
+  vatRate: string
   isActive: boolean
   isBatchTracked: boolean
   isSerialTracked: boolean
+  reorderPoint: string
+  reorderQty: string
+  safetyStock: string
+  maxStockLevel: string
 }
 
 export default function EditProductPage({ params }: EditProductPageProps) {
@@ -70,14 +104,23 @@ export default function EditProductPage({ params }: EditProductPageProps) {
             setFormState({
               sku: match.sku || "",
               name: match.name || "",
+              category: match.category || "",
               eanCode: match.eanCode || "",
-              abcClass: match.abcClass ?? null,
+              abcClass: (match.abcClass as ProductEditFormState["abcClass"]) || ABC_NONE_VALUE,
               uom: match.uom || "pcs",
-              costMethod: match.costMethod || "AVG",
-              vatRate: typeof match.vatRate === "string" ? Number(match.vatRate) : match.vatRate || 25,
+              lengthMm: toStringOrEmpty(match.lengthMm),
+              widthMm: toStringOrEmpty(match.widthMm),
+              heightMm: toStringOrEmpty(match.heightMm),
+              weightG: toStringOrEmpty(match.weightG),
+              costMethod: (match.costMethod as ProductInput["costMethod"]) || "AVG",
+              vatRate: toVatRateString(match.vatRate),
               isActive: match.isActive ?? true,
               isBatchTracked: match.isBatchTracked ?? false,
               isSerialTracked: match.isSerialTracked ?? false,
+              reorderPoint: toStringOrEmpty(match.reorderPoint),
+              reorderQty: toStringOrEmpty(match.reorderQty),
+              safetyStock: toStringOrEmpty(match.safetyStock),
+              maxStockLevel: toStringOrEmpty(match.maxStockLevel),
             })
           } else if (isMounted) {
             setError("Product not found in local data")
@@ -89,14 +132,24 @@ export default function EditProductPage({ params }: EditProductPageProps) {
             setFormState({
               sku: response.sku || "",
               name: response.name || "",
+              category: (response as any).category || "",
               eanCode: response.eanCode || "",
-              abcClass: (response.abcClass as ProductEditFormState["abcClass"]) ?? null,
+              abcClass:
+                ((response.abcClass as ProductEditFormState["abcClass"]) || ABC_NONE_VALUE),
               uom: response.uom || "pcs",
+              lengthMm: toStringOrEmpty((response as any).lengthMm),
+              widthMm: toStringOrEmpty((response as any).widthMm),
+              heightMm: toStringOrEmpty((response as any).heightMm),
+              weightG: toStringOrEmpty((response as any).weightG),
               costMethod: (response.costMethod as ProductInput["costMethod"]) || "AVG",
-              vatRate: typeof response.vatRate === "string" ? Number(response.vatRate) : response.vatRate || 25,
+              vatRate: toVatRateString(response.vatRate),
               isActive: response.isActive ?? true,
               isBatchTracked: response.isBatchTracked ?? false,
               isSerialTracked: response.isSerialTracked ?? false,
+              reorderPoint: toStringOrEmpty((response as any).reorderPoint),
+              reorderQty: toStringOrEmpty((response as any).reorderQty),
+              safetyStock: toStringOrEmpty((response as any).safetyStock),
+              maxStockLevel: toStringOrEmpty((response as any).maxStockLevel),
             })
           }
         }
@@ -138,14 +191,33 @@ export default function EditProductPage({ params }: EditProductPageProps) {
     setIsSaving(true)
     setSaveError(null)
 
+    const prepareNumber = (value: string): number | undefined => {
+      const trimmed = value.trim()
+      if (trimmed === "") {
+        return undefined
+      }
+      const numeric = Number(trimmed)
+      return Number.isFinite(numeric) ? numeric : undefined
+    }
+
+    const sanitizedAbcClass =
+      formState.abcClass === ABC_NONE_VALUE ? undefined : formState.abcClass
+
+    const vatRateValue = formState.vatRate.trim()
+
     const payload: Partial<ProductInput> = {
       sku: formState.sku,
       name: formState.name,
+      category: formState.category || undefined,
       eanCode: formState.eanCode || undefined,
-      abcClass: formState.abcClass || undefined,
+      abcClass: sanitizedAbcClass,
       uom: formState.uom,
+      lengthMm: prepareNumber(formState.lengthMm),
+      widthMm: prepareNumber(formState.widthMm),
+      heightMm: prepareNumber(formState.heightMm),
+      weightG: prepareNumber(formState.weightG),
       costMethod: formState.costMethod,
-      vatRate: String(formState.vatRate),
+      vatRate: vatRateValue === "" ? undefined : vatRateValue,
       isActive: formState.isActive,
       isBatchTracked: formState.isBatchTracked,
       isSerialTracked: formState.isSerialTracked,
@@ -162,6 +234,10 @@ export default function EditProductPage({ params }: EditProductPageProps) {
             ? {
                 ...item,
                 ...payload,
+                reorderPoint: prepareNumber(formState.reorderPoint),
+                reorderQty: prepareNumber(formState.reorderQty),
+                safetyStock: prepareNumber(formState.safetyStock),
+                maxStockLevel: prepareNumber(formState.maxStockLevel),
                 updatedAt: new Date().toISOString(),
               }
             : item
@@ -234,160 +310,364 @@ export default function EditProductPage({ params }: EditProductPageProps) {
       </div>
 
       <form id="edit-product-form" onSubmit={handleSubmit} className="space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Basic Information</CardTitle>
-            <CardDescription>Keep SKU and name consistent with your catalog</CardDescription>
-          </CardHeader>
-          <CardContent className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="sku">SKU</Label>
-              <Input
-                id="sku"
-                value={formState.sku}
-                onChange={(event) => updateFormState("sku", event.target.value.toUpperCase())}
-              />
-              <p className="text-xs text-muted-foreground">Unique identifier for this product</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="name">Product Name</Label>
-              <Input
-                id="name"
-                value={formState.name}
-                onChange={(event) => updateFormState("name", event.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">Displayed on documents and reports</p>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="ean">EAN / UPC</Label>
-              <Input
-                id="ean"
-                value={formState.eanCode}
-                onChange={(event) => updateFormState("eanCode", event.target.value)}
-                placeholder="Optional"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="abcClass">ABC Class</Label>
-              <Select
-                value={formState.abcClass ?? ABC_NONE_VALUE}
-                onValueChange={(value) =>
-                  updateFormState(
-                    "abcClass",
-                    value === ABC_NONE_VALUE
-                      ? null
-                      : (value as Exclude<ProductEditFormState["abcClass"], null>)
-                  )
-                }
-              >
-                <SelectTrigger id="abcClass">
-                  <SelectValue placeholder="Select class" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ABC_NONE_VALUE}>Not set</SelectItem>
-                  <SelectItem value="A">Class A</SelectItem>
-                  <SelectItem value="B">Class B</SelectItem>
-                  <SelectItem value="C">Class C</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </CardContent>
-        </Card>
+        <Tabs defaultValue="basic" className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="basic">
+              <Package className="h-4 w-4 mr-2" />
+              Basic Information
+            </TabsTrigger>
+            <TabsTrigger value="dimensions">
+              <Ruler className="h-4 w-4 mr-2" />
+              Dimensions
+            </TabsTrigger>
+            <TabsTrigger value="costing">
+              <DollarSign className="h-4 w-4 mr-2" />
+              Costing & Tax
+            </TabsTrigger>
+            <TabsTrigger value="inventory">
+              <BarChart3 className="h-4 w-4 mr-2" />
+              Inventory Settings
+            </TabsTrigger>
+            <TabsTrigger value="tracking">
+              <Settings className="h-4 w-4 mr-2" />
+              Tracking
+            </TabsTrigger>
+          </TabsList>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Operations</CardTitle>
-            <CardDescription>Control unit of measure, costing method, and tracking</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="uom">Unit of Measure</Label>
-                <Input
-                  id="uom"
-                  value={formState.uom}
-                  onChange={(event) => updateFormState("uom", event.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="costMethod">Cost Method</Label>
-                <Select
-                  value={formState.costMethod}
-                  onValueChange={(value) => updateFormState("costMethod", value as ProductInput["costMethod"])}
-                >
-                  <SelectTrigger id="costMethod">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="AVG">Average</SelectItem>
-                    <SelectItem value="FIFO">FIFO</SelectItem>
-                    <SelectItem value="LIFO">LIFO</SelectItem>
-                    <SelectItem value="STANDARD">Standard</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="vatRate">VAT Rate (%)</Label>
-                <Input
-                  id="vatRate"
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={0.5}
-                  value={formState.vatRate}
-                  onChange={(event) => updateFormState("vatRate", Number(event.target.value))}
-                />
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="grid gap-4 md:grid-cols-3">
-              <div className="flex items-center justify-between border rounded-lg p-4">
-                <div>
-                  <h4 className="text-sm font-medium">Active</h4>
-                  <p className="text-xs text-muted-foreground">Include in listings and reports</p>
+          <TabsContent value="basic" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Product Details</CardTitle>
+                <CardDescription>Basic information about your product</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sku">SKU (Stock Keeping Unit)</Label>
+                    <Input
+                      id="sku"
+                      value={formState.sku}
+                      onChange={(event) => updateFormState("sku", event.target.value.toUpperCase())}
+                    />
+                    <p className="text-xs text-muted-foreground">Unique identifier for this product</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Product Name</Label>
+                    <Input
+                      id="name"
+                      value={formState.name}
+                      onChange={(event) => updateFormState("name", event.target.value)}
+                      placeholder="Enter product name"
+                    />
+                  </div>
                 </div>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={formState.isActive}
-                  onChange={(event) => updateFormState("isActive", event.target.checked)}
-                />
-              </div>
 
-              <div className="flex items-center justify-between border rounded-lg p-4">
-                <div>
-                  <h4 className="text-sm font-medium">Batch Tracking</h4>
-                  <p className="text-xs text-muted-foreground">Track by batch / lot number</p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="eanCode">EAN/UPC Code</Label>
+                    <Input
+                      id="eanCode"
+                      value={formState.eanCode}
+                      onChange={(event) => updateFormState("eanCode", event.target.value)}
+                      placeholder="1234567890123"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Category</Label>
+                    <Select
+                      value={formState.category || undefined}
+                      onValueChange={(value) => updateFormState("category", value)}
+                    >
+                      <SelectTrigger id="category">
+                        <SelectValue placeholder="Select a category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="electronics">Electronics</SelectItem>
+                        <SelectItem value="accessories">Accessories</SelectItem>
+                        <SelectItem value="cables">Cables</SelectItem>
+                        <SelectItem value="storage">Storage</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={formState.isBatchTracked}
-                  onChange={(event) => updateFormState("isBatchTracked", event.target.checked)}
-                />
-              </div>
 
-              <div className="flex items-center justify-between border rounded-lg p-4">
-                <div>
-                  <h4 className="text-sm font-medium">Serial Tracking</h4>
-                  <p className="text-xs text-muted-foreground">Track individual units</p>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="uom">Unit of Measure</Label>
+                    <Select
+                      value={formState.uom}
+                      onValueChange={(value) => updateFormState("uom", value)}
+                    >
+                      <SelectTrigger id="uom">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pcs">Pieces</SelectItem>
+                        <SelectItem value="kg">Kilograms</SelectItem>
+                        <SelectItem value="m">Meters</SelectItem>
+                        <SelectItem value="l">Liters</SelectItem>
+                        <SelectItem value="box">Box</SelectItem>
+                        <SelectItem value="pack">Pack</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="abcClass">ABC Classification</Label>
+                    <Select
+                      value={formState.abcClass}
+                      onValueChange={(value) =>
+                        updateFormState(
+                          "abcClass",
+                          value as ProductEditFormState["abcClass"]
+                        )
+                      }
+                    >
+                      <SelectTrigger id="abcClass">
+                        <SelectValue placeholder="Select class" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={ABC_NONE_VALUE}>Not set</SelectItem>
+                        <SelectItem value="A">Class A - High Value</SelectItem>
+                        <SelectItem value="B">Class B - Medium Value</SelectItem>
+                        <SelectItem value="C">Class C - Low Value</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Status</Label>
+                    <label className="flex items-center gap-2 h-10 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        className="rounded border-gray-300"
+                        checked={formState.isActive}
+                        onChange={(event) => updateFormState("isActive", event.target.checked)}
+                      />
+                      <span>Active</span>
+                    </label>
+                  </div>
                 </div>
-                <input
-                  type="checkbox"
-                  className="h-4 w-4"
-                  checked={formState.isSerialTracked}
-                  onChange={(event) => updateFormState("isSerialTracked", event.target.checked)}
-                />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {saveError && (
-          <p className="text-sm text-destructive">{saveError}</p>
-        )}
+          <TabsContent value="dimensions" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Physical Dimensions</CardTitle>
+                <CardDescription>Specify the size and weight of your product</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="lengthMm">Length (mm)</Label>
+                    <Input
+                      id="lengthMm"
+                      type="number"
+                      value={formState.lengthMm}
+                      onChange={(event) => updateFormState("lengthMm", event.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="widthMm">Width (mm)</Label>
+                    <Input
+                      id="widthMm"
+                      type="number"
+                      value={formState.widthMm}
+                      onChange={(event) => updateFormState("widthMm", event.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="heightMm">Height (mm)</Label>
+                    <Input
+                      id="heightMm"
+                      type="number"
+                      value={formState.heightMm}
+                      onChange={(event) => updateFormState("heightMm", event.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="weightG">Weight (grams)</Label>
+                    <Input
+                      id="weightG"
+                      type="number"
+                      value={formState.weightG}
+                      onChange={(event) => updateFormState("weightG", event.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="costing" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Costing & Tax Settings</CardTitle>
+                <CardDescription>Configure how costs are calculated for this product</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="costMethod">Cost Method</Label>
+                    <Select
+                      value={formState.costMethod}
+                      onValueChange={(value) => updateFormState("costMethod", value as ProductInput["costMethod"])}
+                    >
+                      <SelectTrigger id="costMethod">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="AVG">Average Cost</SelectItem>
+                        <SelectItem value="FIFO">First In, First Out</SelectItem>
+                        <SelectItem value="LIFO">Last In, First Out</SelectItem>
+                        <SelectItem value="STANDARD">Standard Cost</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="vatRate">VAT Rate (%)</Label>
+                    <Input
+                      id="vatRate"
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={formState.vatRate}
+                      onChange={(event) => updateFormState("vatRate", event.target.value)}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="inventory" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Inventory Management Settings</CardTitle>
+                <CardDescription>Set reorder points and stock levels</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="reorderPoint">Reorder Point</Label>
+                    <Input
+                      id="reorderPoint"
+                      type="number"
+                      value={formState.reorderPoint}
+                      onChange={(event) => updateFormState("reorderPoint", event.target.value)}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">Alert when stock falls below this level</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="reorderQty">Reorder Quantity</Label>
+                    <Input
+                      id="reorderQty"
+                      type="number"
+                      value={formState.reorderQty}
+                      onChange={(event) => updateFormState("reorderQty", event.target.value)}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">Default quantity to order when restocking</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="safetyStock">Safety Stock</Label>
+                    <Input
+                      id="safetyStock"
+                      type="number"
+                      value={formState.safetyStock}
+                      onChange={(event) => updateFormState("safetyStock", event.target.value)}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">Minimum buffer stock to maintain</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="maxStockLevel">Maximum Stock Level</Label>
+                    <Input
+                      id="maxStockLevel"
+                      type="number"
+                      value={formState.maxStockLevel}
+                      onChange={(event) => updateFormState("maxStockLevel", event.target.value)}
+                      placeholder="0"
+                    />
+                    <p className="text-xs text-muted-foreground">Maximum quantity to keep in stock</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="tracking" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Tracking Requirements</CardTitle>
+                <CardDescription>Configure batch and serial tracking</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="isBatchTracked" className="cursor-pointer">
+                          Batch / Lot Tracking
+                        </Label>
+                        {formState.isBatchTracked && <Badge variant="secondary">Enabled</Badge>}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Track inventory by batch or lot numbers
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="isBatchTracked"
+                      className="h-4 w-4 rounded border-gray-300"
+                      checked={formState.isBatchTracked}
+                      onChange={(event) => updateFormState("isBatchTracked", event.target.checked)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="isSerialTracked" className="cursor-pointer">
+                          Serial Number Tracking
+                        </Label>
+                        {formState.isSerialTracked && <Badge variant="secondary">Enabled</Badge>}
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Track each unit individually by serial number
+                      </p>
+                    </div>
+                    <input
+                      type="checkbox"
+                      id="isSerialTracked"
+                      className="h-4 w-4 rounded border-gray-300"
+                      checked={formState.isSerialTracked}
+                      onChange={(event) => updateFormState("isSerialTracked", event.target.checked)}
+                    />
+                  </div>
+                </div>
+
+                {(formState.isBatchTracked || formState.isSerialTracked) && (
+                  <div className="p-4 bg-muted rounded-lg text-sm">
+                    <strong>Note:</strong> When tracking is enabled, you&apos;ll need to provide
+                    {formState.isBatchTracked && formState.isSerialTracked && " batch/lot numbers and serial numbers"}
+                    {formState.isBatchTracked && !formState.isSerialTracked && " batch/lot numbers"}
+                    {!formState.isBatchTracked && formState.isSerialTracked && " serial numbers"}
+                    {" "}for all inventory movements.
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {saveError && <p className="text-sm text-destructive">{saveError}</p>}
       </form>
     </div>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import { use, useCallback, useEffect, useState } from "react"
+import { use, useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { ArrowLeft, RefreshCw } from "lucide-react"
 
@@ -9,7 +9,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiClient } from "@/lib/api/client"
 import { useCompanyStore } from "@/stores/company"
-import type { InventoryBalance, Product, Warehouse } from "@/types/api"
+import type {
+  InventoryBalance,
+  InventoryMovement,
+  Product,
+  Warehouse,
+} from "@/types/api"
 
 interface ProductStockPageProps {
   params: Promise<{
@@ -29,6 +34,7 @@ export default function ProductStockPage({ params }: ProductStockPageProps) {
   const [rows, setRows] = useState<StockRow[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [movements, setMovements] = useState<InventoryMovement[]>([])
 
   const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
 
@@ -42,15 +48,22 @@ export default function ProductStockPage({ params }: ProductStockPageProps) {
       const localProducts = JSON.parse(localStorage.getItem("demo_products") || "[]")
       const match = localProducts.find((item: any) => item.productId === productId)
       setProduct(match ?? null)
+      setMovements([])
       setLoading(false)
       return
     }
 
     try {
-      const [productResponse, balancesResponse, warehousesResponse] = await Promise.all([
+      const [
+        productResponse,
+        balancesResponse,
+        warehousesResponse,
+        movementsResponse,
+      ] = await Promise.all([
         apiClient.getProduct(productId),
         apiClient.getInventoryBalances({ product: productId }),
         currentCompany ? apiClient.getWarehouses(currentCompany.companyId) : Promise.resolve({ member: [] } as any),
+        apiClient.getInventoryMovements({ product: productId }),
       ])
 
       setProduct(productResponse)
@@ -66,6 +79,14 @@ export default function ProductStockPage({ params }: ProductStockPageProps) {
       }))
 
       setRows(enrichedRows)
+      const movementEntries = (movementsResponse.member ?? []).map((movement) => ({
+        ...movement,
+        qtyDelta: typeof movement.qtyDelta === "number"
+          ? movement.qtyDelta
+          : Number(movement.qtyDelta),
+      }))
+
+      setMovements(movementEntries)
     } catch (err) {
       console.error("Failed to load stock levels", err)
       setError("Unable to load stock information. Please try again.")
@@ -85,6 +106,41 @@ export default function ProductStockPage({ params }: ProductStockPageProps) {
     }
     return "—"
   }
+
+  const chartData = useMemo(() => {
+    if (movements.length === 0) {
+      return [] as Array<{ date: Date; running: number; qtyDelta: number }>
+    }
+
+    const sorted = [...movements].sort((a, b) =>
+      new Date(a.performedAt).getTime() - new Date(b.performedAt).getTime()
+    )
+
+    let running = 0
+    return sorted.map((movement) => {
+      const qty = typeof movement.qtyDelta === "number"
+        ? movement.qtyDelta
+        : Number(movement.qtyDelta)
+      if (!Number.isFinite(qty)) {
+        return {
+          date: new Date(movement.performedAt),
+          running,
+          qtyDelta: 0,
+        }
+      }
+      running += qty
+      return {
+        date: new Date(movement.performedAt),
+        running,
+        qtyDelta: qty,
+      }
+    })
+  }, [movements])
+
+  const totalOnHand = useMemo(() => {
+    if (rows.length === 0) return 0
+    return rows.reduce((sum, row) => sum + Number(row.qtyOnHand ?? 0), 0)
+  }, [rows])
 
   if (loading) {
     return (
@@ -141,6 +197,12 @@ export default function ProductStockPage({ params }: ProductStockPageProps) {
         </Button>
       </div>
 
+      <InventoryMovementChart
+        data={chartData}
+        disabled={isDevMode}
+        currentBalance={totalOnHand}
+      />
+
       <Card>
         <CardHeader>
           <CardTitle>Warehouse Balances</CardTitle>
@@ -181,5 +243,201 @@ export default function ProductStockPage({ params }: ProductStockPageProps) {
         </CardContent>
       </Card>
     </div>
+  )
+}
+
+interface InventoryMovementChartProps {
+  data: Array<{ date: Date; running: number; qtyDelta: number }>
+  disabled?: boolean
+  currentBalance: number
+}
+
+function InventoryMovementChart({ data, disabled, currentBalance }: InventoryMovementChartProps) {
+  const inbound = data.reduce((sum, point) => sum + (point.qtyDelta > 0 ? point.qtyDelta : 0), 0)
+  const outbound = data.reduce((sum, point) => sum + (point.qtyDelta < 0 ? Math.abs(point.qtyDelta) : 0), 0)
+  const netChange = data.length > 0 ? data[data.length - 1].running : 0
+  const lastMovement = data.length > 0 ? data[data.length - 1] : null
+
+  const chartPoints = useMemo(() => {
+    if (data.length === 0) {
+      return [] as Array<{ x: number; y: number; label: string }>
+    }
+
+    const values = data.map((point) => point.running)
+    values.push(0)
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    const clampedRange = max - min || 1
+    const height = 60
+    const verticalPadding = 6
+    const usableHeight = height - verticalPadding * 2
+    const normalized = data.length === 1
+      ? [...data, { ...data[0], date: new Date(data[0].date.getTime() + 1000) }]
+      : data
+
+    const formatter = new Intl.DateTimeFormat(undefined, {
+      month: "short",
+      day: "numeric",
+    })
+
+    return normalized.map((point, index) => {
+      const x = (normalized.length === 1 ? 0 : index / (normalized.length - 1)) * 100
+      const yValue = height - ((point.running - min) / clampedRange) * usableHeight - verticalPadding
+      return {
+        x,
+        y: Number.isFinite(yValue) ? yValue : height - verticalPadding,
+        label: formatter.format(point.date),
+        value: point.running,
+      }
+    })
+  }, [data])
+
+  const linePath = chartPoints.reduce((path, point, index) => {
+    const command = index === 0 ? "M" : "L"
+    return `${path} ${command} ${point.x} ${point.y}`.trim()
+  }, "")
+
+  const areaPath = linePath
+    ? `${linePath} L 100 60 L 0 60 Z`
+    : ""
+
+  const yAxisTicks = useMemo(() => {
+    if (chartPoints.length === 0) return [] as Array<{ value: number; y: number }>
+    const values = chartPoints.map((point) => point.value)
+    const min = Math.min(...values)
+    const max = Math.max(...values)
+    const range = max - min || 1
+    const steps = 4
+    return Array.from({ length: steps + 1 }, (_, index) => {
+      const ratio = index / steps
+      const value = Math.round(min + range * (1 - ratio))
+      const y = 6 + (60 - 12) * ratio
+      return { value, y }
+    })
+  }, [chartPoints])
+
+  const formatter = new Intl.DateTimeFormat(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Inventory Movements</CardTitle>
+        <CardDescription>
+          How quantities have changed over time for this product
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {disabled ? (
+          <div className="py-8 text-center text-muted-foreground">
+            Inventory movements are unavailable in development mode.
+          </div>
+        ) : data.length === 0 ? (
+          <div className="py-8 text-center text-muted-foreground">
+            No movement history yet for this product.
+          </div>
+        ) : (
+          <>
+            <div className="relative h-72">
+              <svg viewBox="0 0 120 70" preserveAspectRatio="none" className="h-full w-full">
+                <defs>
+                  <linearGradient id="movement-gradient" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.35" />
+                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
+                  </linearGradient>
+                </defs>
+                <g transform="translate(10,5)">
+                  <line x1="0" y1="0" x2="0" y2="60" stroke="hsl(var(--border))" strokeWidth="0.5" strokeDasharray="2 2" />
+                  <line x1="0" y1="60" x2="100" y2="60" stroke="hsl(var(--border))" strokeWidth="0.5" strokeDasharray="2 2" />
+
+                  {yAxisTicks.map((tick) => (
+                    <g key={tick.y}>
+                      <line x1="0" y1={tick.y} x2="100" y2={tick.y} stroke="hsl(var(--border))" strokeWidth="0.25" strokeDasharray="2 3" />
+                      <text x="-3" y={tick.y + 1.5} fontSize="3" fill="hsl(var(--muted-foreground))" textAnchor="end">
+                        {tick.value.toLocaleString()}
+                      </text>
+                    </g>
+                  ))}
+
+                  {chartPoints.map((point, index) => (
+                    <g key={`${point.x}-${point.y}-${index}`} transform={`translate(${point.x}, ${point.y})`}>
+                      <circle r={1.5} fill="hsl(var(--primary))" stroke="white" strokeWidth="0.4" />
+                      <line x1="0" y1="0" x2="0" y2="60" stroke="hsl(var(--primary))" strokeOpacity="0.2" strokeWidth="0.5" strokeDasharray="1 3" />
+                      <text
+                        x="0"
+                        y="63"
+                        fontSize="3"
+                        fill="hsl(var(--muted-foreground))"
+                        textAnchor="middle"
+                      >
+                        {point.label}
+                      </text>
+                    </g>
+                  ))}
+
+                  {areaPath && (
+                    <path d={areaPath} fill="url(#movement-gradient)" stroke="none" />
+                  )}
+                  {linePath && (
+                    <path d={linePath} fill="none" stroke="hsl(var(--primary))" strokeWidth={1} />
+                  )}
+                </g>
+
+                <text x="5" y="15" fontSize="4" fill="hsl(var(--muted-foreground))" transform="rotate(-90 5 15)">
+                  Units on Hand
+                </text>
+                <text x="70" y="68" fontSize="4" fill="hsl(var(--muted-foreground))" textAnchor="middle">
+                  Movement Date
+                </text>
+              </svg>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-3 text-sm">
+              <div>
+                <p className="text-muted-foreground">Net Change</p>
+                <p className="text-lg font-semibold">
+                  {netChange >= 0 ? "+" : ""}
+                  {netChange.toLocaleString()}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">units</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Current On Hand</p>
+                <p className="text-lg font-semibold">
+                  {currentBalance.toLocaleString()}
+                  <span className="text-xs font-normal text-muted-foreground ml-1">units</span>
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Inbound / Outbound</p>
+                <p className="text-lg font-semibold">
+                  {inbound.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">in</span>
+                  <span className="mx-1 text-muted-foreground">·</span>
+                  {outbound.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">out</span>
+                </p>
+              </div>
+            </div>
+
+            {lastMovement && (
+              <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
+                Last movement {lastMovement.qtyDelta >= 0 ? "added" : "removed"}{" "}
+                <span className="font-medium text-foreground">
+                  {Math.abs(lastMovement.qtyDelta).toLocaleString()} units
+                </span>{" "}
+                on {formatter.format(lastMovement.date)}. Running balance after movement:{" "}
+                <span className="font-medium text-foreground">
+                  {lastMovement.running.toLocaleString()}
+                </span> units.
+              </div>
+            )}
+          </>
+        )}
+      </CardContent>
+    </Card>
   )
 }

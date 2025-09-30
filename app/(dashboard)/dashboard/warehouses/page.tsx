@@ -17,6 +17,7 @@ import {
   BarChart3
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
+import { apiClient } from "@/lib/api/client"
 import { Warehouse as WarehouseType } from "@/types/api"
 
 export default function WarehousesPage() {
@@ -33,52 +34,20 @@ export default function WarehousesPage() {
   }, [currentCompany])
 
   const loadWarehouses = async () => {
+    if (!currentCompany) {
+      setWarehouses([])
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
     try {
-      // Sample data for demonstration
-      setWarehouses([
-        {
-          warehouseId: "1",
-          code: "MAIN",
-          name: "Main Warehouse",
-          company: currentCompany?.companyId || "",
-          addressJson: {
-            street: "123 Industrial Ave",
-            city: "Stockholm",
-            state: "Stockholm",
-            postalCode: "11122",
-            country: "SE"
-          }
-        },
-        {
-          warehouseId: "2",
-          code: "EAST",
-          name: "East Coast Distribution Center",
-          company: currentCompany?.companyId || "",
-          addressJson: {
-            street: "456 Logistics Blvd",
-            city: "Göteborg",
-            state: "Västra Götaland",
-            postalCode: "41234",
-            country: "SE"
-          }
-        },
-        {
-          warehouseId: "3",
-          code: "WEST",
-          name: "West Coast Fulfillment",
-          company: currentCompany?.companyId || "",
-          addressJson: {
-            street: "789 Commerce St",
-            city: "Malmö",
-            state: "Skåne",
-            postalCode: "21543",
-            country: "SE"
-          }
-        }
-      ])
+      // Fetch warehouses from the API
+      const response = await apiClient.getWarehouses(currentCompany.companyId)
+      setWarehouses(response.member || [])
     } catch (error) {
       console.error("Error loading warehouses:", error)
+      // If API fails, show empty state
       setWarehouses([])
     } finally {
       setLoading(false)
@@ -108,7 +77,7 @@ export default function WarehousesPage() {
             Manage your storage locations and distribution centers
           </p>
         </div>
-        <Button>
+        <Button onClick={() => router.push("/dashboard/warehouses/new")}>
           <Plus className="h-4 w-4 mr-2" />
           Add Warehouse
         </Button>

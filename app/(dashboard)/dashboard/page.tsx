@@ -1,21 +1,23 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { 
-  Package, 
-  TrendingUp, 
-  AlertTriangle, 
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  Package,
+  TrendingUp,
+  AlertTriangle,
   ShoppingCart,
   DollarSign,
   Warehouse,
   Activity,
   ArrowUpRight,
-  ArrowDownRight
+  ArrowDownRight,
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
 import { apiClient } from "@/lib/api/client"
+import type { InventoryMovement, Product, ProductFamily } from "@/types/api"
 
 export default function DashboardPage() {
   const { currentCompany } = useCompanyStore()
@@ -25,14 +27,11 @@ export default function DashboardPage() {
     lowStockItems: 0,
     pendingOrders: 0,
   })
+  const [movements, setMovements] = useState<InventoryMovement[]>([])
+  const [loadingMovements, setLoadingMovements] = useState(false)
+  const [movementError, setMovementError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (currentCompany) {
-      loadDashboardData()
-    }
-  }, [currentCompany])
-
-  const loadDashboardData = async () => {
+  const loadDashboardData = useCallback(async () => {
     // This would fetch real data from the API
     // For now, using placeholder data
     setStats({
@@ -41,7 +40,168 @@ export default function DashboardPage() {
       lowStockItems: 8,
       pendingOrders: 5,
     })
-  }
+  }, [])
+
+  const loadRecentMovements = useCallback(async () => {
+    if (!currentCompany) {
+      return
+    }
+
+    setLoadingMovements(true)
+    setMovementError(null)
+
+    try {
+      const response = await apiClient.getInventoryMovements({
+        company: currentCompany.companyId,
+        itemsPerPage: 10,
+      })
+
+      const items = response.member ?? []
+      const sorted = items
+        .map((movement) => ({
+          ...movement,
+          qtyDelta:
+            typeof movement.qtyDelta === "number"
+              ? movement.qtyDelta
+              : Number(movement.qtyDelta),
+        }))
+        .sort(
+          (a, b) =>
+            new Date(b.performedAt).getTime() - new Date(a.performedAt).getTime()
+        )
+        .slice(0, 6)
+
+      const productIris = Array.from(
+        new Set(
+          sorted
+            .map((movement) => movement.product)
+            .filter((value): value is string => Boolean(value))
+        )
+      )
+
+      const productMap = new Map<string, Product>()
+
+      await Promise.all(
+        productIris.map(async (iri) => {
+          const productId = iri.split("/").pop()
+          if (!productId) {
+            return
+          }
+
+          try {
+            const product = await apiClient.getProduct(productId)
+            productMap.set(iri, product)
+          } catch (error) {
+            console.error("Failed to load product for movement", { iri, error })
+          }
+        })
+      )
+
+      const familyIris = Array.from(
+        new Set(
+          Array.from(productMap.values())
+            .map((product) => (typeof product.family === "string" ? product.family : null))
+            .filter((value): value is string => Boolean(value))
+        )
+      )
+
+      const familyMap = new Map<string, ProductFamily>()
+
+      await Promise.all(
+        familyIris.map(async (iri) => {
+          const familyId = iri.split("/").pop()
+          if (!familyId) {
+            return
+          }
+          try {
+            const family = await apiClient.getProductFamily(familyId)
+            familyMap.set(iri, family)
+          } catch (error) {
+            console.error("Failed to load product family", { iri, error })
+          }
+        })
+      )
+
+      const enriched = sorted.map((movement) => {
+        const product = movement.product ? productMap.get(movement.product) : undefined
+
+        let displayName: string | undefined
+        if (product) {
+          const familyName = extractFamilyName(product.family, familyMap)
+          const variantLabel = extractVariantLabel(product.variantAttributes)
+          const parts = [familyName ?? product.name, variantLabel, product.sku]
+          displayName = parts.filter(Boolean).join(" - ")
+        }
+
+        return {
+          ...movement,
+          productDisplayName: displayName ?? movement.productName ?? movement.product,
+        }
+      })
+
+      setMovements(enriched)
+    } catch (error) {
+      console.error("Failed to load inventory movements", error)
+      setMovementError("Could not load recent movements")
+    } finally {
+      setLoadingMovements(false)
+    }
+  }, [currentCompany])
+
+  useEffect(() => {
+    if (currentCompany) {
+      loadDashboardData()
+      loadRecentMovements()
+    }
+  }, [currentCompany, loadDashboardData, loadRecentMovements])
+
+  const movementMetadata = useMemo(
+    () => ({
+      RECEIPT: {
+        label: "Receipt",
+        badgeVariant: "default" as const,
+        bubbleClasses: "bg-emerald-100 text-emerald-700",
+        isPositive: true,
+      },
+      SHIPMENT: {
+        label: "Shipment",
+        badgeVariant: "secondary" as const,
+        bubbleClasses: "bg-sky-100 text-sky-700",
+        isPositive: false,
+      },
+      TRANSFER: {
+        label: "Transfer",
+        badgeVariant: "outline" as const,
+        bubbleClasses: "bg-violet-100 text-violet-700",
+        isPositive: true,
+      },
+      ADJUST: {
+        label: "Adjust",
+        badgeVariant: "secondary" as const,
+        bubbleClasses: "bg-amber-100 text-amber-700",
+        isPositive: true,
+      },
+      RETURN: {
+        label: "Return",
+        badgeVariant: "secondary" as const,
+        bubbleClasses: "bg-rose-100 text-rose-700",
+        isPositive: true,
+      },
+      COUNT: {
+        label: "Count",
+        badgeVariant: "secondary" as const,
+        bubbleClasses: "bg-slate-100 text-slate-700",
+        isPositive: true,
+      },
+      DAMAGE: {
+        label: "Damage",
+        badgeVariant: "destructive" as const,
+        bubbleClasses: "bg-red-100 text-red-700",
+        isPositive: false,
+      },
+    }),
+    []
+  )
 
   return (
     <div className="space-y-6">
@@ -127,41 +287,13 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {[
-                { id: 1, type: "RECEIPT", product: "Laptop Pro 15", qty: 25, warehouse: "Main Warehouse" },
-                { id: 2, type: "SHIPMENT", product: "Wireless Mouse", qty: -10, warehouse: "East Coast DC" },
-                { id: 3, type: "ADJUST", product: "USB-C Cable", qty: -3, warehouse: "Main Warehouse" },
-                { id: 4, type: "TRANSFER", product: "Keyboard Mechanical", qty: 15, warehouse: "West Coast DC" },
-              ].map((movement) => (
-                <div key={movement.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-full ${
-                      movement.type === 'RECEIPT' ? 'bg-green-100' :
-                      movement.type === 'SHIPMENT' ? 'bg-blue-100' :
-                      movement.type === 'ADJUST' ? 'bg-yellow-100' :
-                      'bg-purple-100'
-                    }`}>
-                      <Activity className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">{movement.product}</p>
-                      <p className="text-xs text-muted-foreground">{movement.warehouse}</p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Badge variant={movement.type === 'RECEIPT' ? 'default' : 'secondary'}>
-                      {movement.type}
-                    </Badge>
-                    <span className={`text-sm font-medium ${
-                      movement.qty > 0 ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {movement.qty > 0 ? '+' : ''}{movement.qty}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <RecentMovements
+              movements={movements}
+              metadata={movementMetadata}
+              loading={loadingMovements}
+              error={movementError}
+              onRetry={loadRecentMovements}
+            />
           </CardContent>
         </Card>
 
@@ -200,4 +332,144 @@ export default function DashboardPage() {
       </div>
     </div>
   )
+}
+
+interface RecentMovementsProps {
+  movements: InventoryMovement[]
+  metadata: Record<string, {
+    label: string
+    badgeVariant: "default" | "secondary" | "outline" | "destructive"
+    bubbleClasses: string
+    isPositive: boolean
+  }>
+  loading: boolean
+  error: string | null
+  onRetry: () => void
+}
+
+function RecentMovements({ movements, metadata, loading, error, onRetry }: RecentMovementsProps) {
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        {Array.from({ length: 4 }).map((_, index) => (
+          <div key={index} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Skeleton className="h-9 w-9 rounded-full" />
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-48" />
+                <Skeleton className="h-3 w-32" />
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Skeleton className="h-6 w-20" />
+              <Skeleton className="h-4 w-12" />
+            </div>
+          </div>
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-md border border-destructive/40 bg-destructive/10 p-4 text-sm">
+        <p className="font-medium text-destructive">{error}</p>
+        <button
+          onClick={onRetry}
+          className="mt-2 text-xs font-medium text-destructive underline"
+        >
+          Try again
+        </button>
+      </div>
+    )
+  }
+
+  if (!movements || movements.length === 0) {
+    return (
+      <div className="py-10 text-center text-muted-foreground text-sm">
+        No recent inventory movements.
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      {movements.map((movement, index) => {
+        const meta = metadata[movement.movementType] ?? metadata.TRANSFER
+        const qty = typeof movement.qtyDelta === "number"
+          ? movement.qtyDelta
+          : Number(movement.qtyDelta)
+        const qtyDisplay = Number.isFinite(qty) ? qty : 0
+
+        return (
+          <div key={`${movement.movementId ?? index}`} className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className={`p-2 rounded-full ${meta.bubbleClasses}`}>
+                <Activity className="h-4 w-4" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-medium">
+                  {movement.productDisplayName ?? movement.productName ?? movement.product ?? "Unknown product"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {movement.warehouseName ?? movement.warehouse ?? "Unknown warehouse"}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Badge variant={meta.badgeVariant}>{meta.label}</Badge>
+              <span
+                className={`text-sm font-medium ${qtyDisplay >= 0 ? "text-emerald-600" : "text-rose-600"}`}
+              >
+                {qtyDisplay >= 0 ? "+" : ""}{qtyDisplay}
+              </span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function extractFamilyName(
+  family: Product["family"],
+  familyMap: Map<string, ProductFamily>
+): string | undefined {
+  if (!family) {
+    return undefined
+  }
+
+  if (typeof family !== "string" && typeof (family as ProductFamily).familyName === "string") {
+    return (family as ProductFamily).familyName
+  }
+
+  if (typeof family === "string") {
+    return familyMap.get(family)?.familyName
+  }
+
+  return undefined
+}
+
+function extractVariantLabel(
+  attributes?: Record<string, string | number | null>
+): string | undefined {
+  if (!attributes) {
+    return undefined
+  }
+
+  const keys = Object.keys(attributes)
+  for (const key of ["size", "Size", "variant", "Variant"]) {
+    if (key in attributes && attributes[key] != null) {
+      return String(attributes[key])
+    }
+  }
+
+  for (const key of keys) {
+    const value = attributes[key]
+    if (value != null) {
+      return String(value)
+    }
+  }
+
+  return undefined
 }
