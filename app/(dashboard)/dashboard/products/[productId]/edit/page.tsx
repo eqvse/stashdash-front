@@ -47,6 +47,23 @@ const toVatRateString = (value: unknown): string => {
   return result === "" ? "25" : result
 }
 
+const normalizeFlag = (value: unknown, fallback = false): boolean => {
+  // If value is explicitly set (not null/undefined), process it
+  if (value !== null && value !== undefined) {
+    if (typeof value === "boolean") return value
+    if (typeof value === "number") return value !== 0
+    if (typeof value === "string") {
+      const normalized = value.trim().toLowerCase()
+      if (["1", "true", "yes", "y"].includes(normalized)) return true
+      if (["0", "false", "no", "n", ""].includes(normalized)) return false
+    }
+    // For any other defined value, use Boolean conversion
+    return Boolean(value)
+  }
+  // Only use fallback if value is null/undefined
+  return fallback
+}
+
 interface EditProductPageProps {
   params: Promise<{
     productId: string
@@ -114,9 +131,9 @@ export default function EditProductPage({ params }: EditProductPageProps) {
               weightG: toStringOrEmpty(match.weightG),
               costMethod: (match.costMethod as ProductInput["costMethod"]) || "AVG",
               vatRate: toVatRateString(match.vatRate),
-              isActive: match.isActive ?? true,
-              isBatchTracked: match.isBatchTracked ?? false,
-              isSerialTracked: match.isSerialTracked ?? false,
+              isActive: normalizeFlag(match.isActive !== undefined ? match.isActive : match.is_active, false),
+              isBatchTracked: normalizeFlag(match.isBatchTracked !== undefined ? match.isBatchTracked : match.is_batch_tracked, false),
+              isSerialTracked: normalizeFlag(match.isSerialTracked !== undefined ? match.isSerialTracked : match.is_serial_tracked, false),
               reorderPoint: toStringOrEmpty(match.reorderPoint),
               reorderQty: toStringOrEmpty(match.reorderQty),
               safetyStock: toStringOrEmpty(match.safetyStock),
@@ -143,9 +160,9 @@ export default function EditProductPage({ params }: EditProductPageProps) {
               weightG: toStringOrEmpty((response as any).weightG),
               costMethod: (response.costMethod as ProductInput["costMethod"]) || "AVG",
               vatRate: toVatRateString(response.vatRate),
-              isActive: response.isActive ?? true,
-              isBatchTracked: response.isBatchTracked ?? false,
-              isSerialTracked: response.isSerialTracked ?? false,
+              isActive: normalizeFlag(response.isActive !== undefined ? response.isActive : (response as any).is_active, false),
+              isBatchTracked: normalizeFlag(response.isBatchTracked !== undefined ? response.isBatchTracked : (response as any).is_batch_tracked, false),
+              isSerialTracked: normalizeFlag(response.isSerialTracked !== undefined ? response.isSerialTracked : (response as any).is_serial_tracked, false),
               reorderPoint: toStringOrEmpty((response as any).reorderPoint),
               reorderQty: toStringOrEmpty((response as any).reorderQty),
               safetyStock: toStringOrEmpty((response as any).safetyStock),

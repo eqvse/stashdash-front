@@ -2,7 +2,18 @@
 
 import { use, useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { ArrowLeft, RefreshCw } from "lucide-react"
+import { ArrowLeft, RefreshCw, TrendingUp, TrendingDown, Package } from "lucide-react"
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+  ReferenceLine,
+  Dot,
+} from "recharts"
 
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -255,187 +266,227 @@ interface InventoryMovementChartProps {
 function InventoryMovementChart({ data, disabled, currentBalance }: InventoryMovementChartProps) {
   const inbound = data.reduce((sum, point) => sum + (point.qtyDelta > 0 ? point.qtyDelta : 0), 0)
   const outbound = data.reduce((sum, point) => sum + (point.qtyDelta < 0 ? Math.abs(point.qtyDelta) : 0), 0)
-  const netChange = data.length > 0 ? data[data.length - 1].running : 0
+  const netChange = data.length > 0 ? data[data.length - 1].running - (data[0].running - data[0].qtyDelta) : 0
   const lastMovement = data.length > 0 ? data[data.length - 1] : null
 
-  const chartPoints = useMemo(() => {
-    if (data.length === 0) {
-      return [] as Array<{ x: number; y: number; label: string }>
-    }
+  // Prepare data for Recharts
+  const chartData = useMemo(() => {
+    if (data.length === 0) return []
 
-    const values = data.map((point) => point.running)
-    values.push(0)
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-    const clampedRange = max - min || 1
-    const height = 60
-    const verticalPadding = 6
-    const usableHeight = height - verticalPadding * 2
-    const normalized = data.length === 1
-      ? [...data, { ...data[0], date: new Date(data[0].date.getTime() + 1000) }]
-      : data
-
-    const formatter = new Intl.DateTimeFormat(undefined, {
-      month: "short",
-      day: "numeric",
-    })
-
-    return normalized.map((point, index) => {
-      const x = (normalized.length === 1 ? 0 : index / (normalized.length - 1)) * 100
-      const yValue = height - ((point.running - min) / clampedRange) * usableHeight - verticalPadding
-      return {
-        x,
-        y: Number.isFinite(yValue) ? yValue : height - verticalPadding,
-        label: formatter.format(point.date),
-        value: point.running,
-      }
-    })
+    return data.map((point) => ({
+      date: point.date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+      fullDate: point.date,
+      stock: point.running,
+      change: point.qtyDelta,
+    }))
   }, [data])
 
-  const linePath = chartPoints.reduce((path, point, index) => {
-    const command = index === 0 ? "M" : "L"
-    return `${path} ${command} ${point.x} ${point.y}`.trim()
-  }, "")
+  const minValue = Math.min(...chartData.map(d => d.stock), 0)
+  const maxValue = Math.max(...chartData.map(d => d.stock))
+  const yAxisDomain = [Math.floor(minValue * 0.9), Math.ceil(maxValue * 1.1)]
 
-  const areaPath = linePath
-    ? `${linePath} L 100 60 L 0 60 Z`
-    : ""
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload[0]) {
+      const data = payload[0].payload
+      return (
+        <div className="rounded-lg border bg-background p-3 shadow-lg">
+          <p className="text-sm font-medium">{label}</p>
+          <div className="mt-2 space-y-1">
+            <p className="text-sm text-muted-foreground">
+              Stock: <span className="font-medium text-foreground">{data.stock.toLocaleString()} units</span>
+            </p>
+            {data.change !== 0 && (
+              <p className="text-sm text-muted-foreground">
+                Change:
+                <span className={`ml-1 font-medium ${data.change > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {data.change > 0 ? '+' : ''}{data.change.toLocaleString()}
+                </span>
+              </p>
+            )}
+          </div>
+        </div>
+      )
+    }
+    return null
+  }
 
-  const yAxisTicks = useMemo(() => {
-    if (chartPoints.length === 0) return [] as Array<{ value: number; y: number }>
-    const values = chartPoints.map((point) => point.value)
-    const min = Math.min(...values)
-    const max = Math.max(...values)
-    const range = max - min || 1
-    const steps = 4
-    return Array.from({ length: steps + 1 }, (_, index) => {
-      const ratio = index / steps
-      const value = Math.round(min + range * (1 - ratio))
-      const y = 6 + (60 - 12) * ratio
-      return { value, y }
-    })
-  }, [chartPoints])
+  const CustomDot = (props: any) => {
+    const { cx, cy, payload } = props
+    if (payload.change === 0) return null
 
-  const formatter = new Intl.DateTimeFormat(undefined, {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+    return (
+      <circle
+        cx={cx}
+        cy={cy}
+        r={4}
+        fill={payload.change > 0 ? '#10b981' : '#ef4444'}
+        stroke="#fff"
+        strokeWidth={2}
+      />
+    )
+  }
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Inventory Movements</CardTitle>
-        <CardDescription>
-          How quantities have changed over time for this product
-        </CardDescription>
+    <Card className="overflow-hidden">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="text-xl font-semibold">Inventory Movements</CardTitle>
+            <CardDescription className="mt-1">
+              Track how stock levels have changed over time
+            </CardDescription>
+          </div>
+          <Package className="h-5 w-5 text-muted-foreground" />
+        </div>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="pt-4">
         {disabled ? (
-          <div className="py-8 text-center text-muted-foreground">
-            Inventory movements are unavailable in development mode.
+          <div className="flex h-[400px] items-center justify-center rounded-lg border border-dashed">
+            <p className="text-sm text-muted-foreground">
+              Inventory movements are unavailable in development mode
+            </p>
           </div>
         ) : data.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            No movement history yet for this product.
+          <div className="flex h-[400px] items-center justify-center rounded-lg border border-dashed">
+            <div className="text-center">
+              <Package className="mx-auto h-12 w-12 text-muted-foreground/50" />
+              <p className="mt-3 text-sm font-medium text-muted-foreground">No movement history</p>
+              <p className="mt-1 text-xs text-muted-foreground">Stock movements will appear here</p>
+            </div>
           </div>
         ) : (
-          <>
-            <div className="relative h-72">
-              <svg viewBox="0 0 120 70" preserveAspectRatio="none" className="h-full w-full">
-                <defs>
-                  <linearGradient id="movement-gradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity="0.35" />
-                    <stop offset="100%" stopColor="hsl(var(--primary))" stopOpacity="0" />
-                  </linearGradient>
-                </defs>
-                <g transform="translate(10,5)">
-                  <line x1="0" y1="0" x2="0" y2="60" stroke="hsl(var(--border))" strokeWidth="0.5" strokeDasharray="2 2" />
-                  <line x1="0" y1="60" x2="100" y2="60" stroke="hsl(var(--border))" strokeWidth="0.5" strokeDasharray="2 2" />
-
-                  {yAxisTicks.map((tick) => (
-                    <g key={tick.y}>
-                      <line x1="0" y1={tick.y} x2="100" y2={tick.y} stroke="hsl(var(--border))" strokeWidth="0.25" strokeDasharray="2 3" />
-                      <text x="-3" y={tick.y + 1.5} fontSize="3" fill="hsl(var(--muted-foreground))" textAnchor="end">
-                        {tick.value.toLocaleString()}
-                      </text>
-                    </g>
-                  ))}
-
-                  {chartPoints.map((point, index) => (
-                    <g key={`${point.x}-${point.y}-${index}`} transform={`translate(${point.x}, ${point.y})`}>
-                      <circle r={1.5} fill="hsl(var(--primary))" stroke="white" strokeWidth="0.4" />
-                      <line x1="0" y1="0" x2="0" y2="60" stroke="hsl(var(--primary))" strokeOpacity="0.2" strokeWidth="0.5" strokeDasharray="1 3" />
-                      <text
-                        x="0"
-                        y="63"
-                        fontSize="3"
-                        fill="hsl(var(--muted-foreground))"
-                        textAnchor="middle"
-                      >
-                        {point.label}
-                      </text>
-                    </g>
-                  ))}
-
-                  {areaPath && (
-                    <path d={areaPath} fill="url(#movement-gradient)" stroke="none" />
-                  )}
-                  {linePath && (
-                    <path d={linePath} fill="none" stroke="hsl(var(--primary))" strokeWidth={1} />
-                  )}
-                </g>
-
-                <text x="5" y="15" fontSize="4" fill="hsl(var(--muted-foreground))" transform="rotate(-90 5 15)">
-                  Units on Hand
-                </text>
-                <text x="70" y="68" fontSize="4" fill="hsl(var(--muted-foreground))" textAnchor="middle">
-                  Movement Date
-                </text>
-              </svg>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-3 text-sm">
-              <div>
-                <p className="text-muted-foreground">Net Change</p>
-                <p className="text-lg font-semibold">
-                  {netChange >= 0 ? "+" : ""}
-                  {netChange.toLocaleString()}
-                  <span className="text-xs font-normal text-muted-foreground ml-1">units</span>
-                </p>
+          <div className="space-y-6">
+            {/* Statistics Cards */}
+            <div className="grid gap-4 md:grid-cols-4">
+              <div className="rounded-lg border bg-card p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Current Stock</p>
+                  <Package className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <p className="mt-2 text-2xl font-bold">{currentBalance.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">units on hand</p>
               </div>
-              <div>
-                <p className="text-muted-foreground">Current On Hand</p>
-                <p className="text-lg font-semibold">
-                  {currentBalance.toLocaleString()}
-                  <span className="text-xs font-normal text-muted-foreground ml-1">units</span>
+
+              <div className="rounded-lg border bg-card p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Net Change</p>
+                  {netChange >= 0 ? (
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                  ) : (
+                    <TrendingDown className="h-4 w-4 text-red-600" />
+                  )}
+                </div>
+                <p className={`mt-2 text-2xl font-bold ${netChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {netChange >= 0 ? '+' : ''}{netChange.toLocaleString()}
                 </p>
+                <p className="text-xs text-muted-foreground">total change</p>
               </div>
-              <div>
-                <p className="text-muted-foreground">Inbound / Outbound</p>
-                <p className="text-lg font-semibold">
-                  {inbound.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">in</span>
-                  <span className="mx-1 text-muted-foreground">·</span>
-                  {outbound.toLocaleString()} <span className="text-xs font-normal text-muted-foreground">out</span>
-                </p>
+
+              <div className="rounded-lg border bg-card p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Inbound</p>
+                  <TrendingUp className="h-4 w-4 text-green-600" />
+                </div>
+                <p className="mt-2 text-2xl font-bold text-green-600">+{inbound.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">units received</p>
+              </div>
+
+              <div className="rounded-lg border bg-card p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Outbound</p>
+                  <TrendingDown className="h-4 w-4 text-red-600" />
+                </div>
+                <p className="mt-2 text-2xl font-bold text-red-600">-{outbound.toLocaleString()}</p>
+                <p className="text-xs text-muted-foreground">units shipped</p>
               </div>
             </div>
 
+            {/* Chart */}
+            <div className="rounded-lg border bg-card p-4">
+              <ResponsiveContainer width="100%" height={350}>
+                <AreaChart
+                  data={chartData}
+                  margin={{ top: 10, right: 10, left: 0, bottom: 0 }}
+                >
+                  <defs>
+                    <linearGradient id="colorStock" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid
+                    strokeDasharray="3 3"
+                    className="stroke-muted/30"
+                    vertical={false}
+                  />
+                  <XAxis
+                    dataKey="date"
+                    className="text-xs"
+                    tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={false}
+                  />
+                  <YAxis
+                    className="text-xs"
+                    tick={{ fill: 'hsl(var(--muted-foreground))' }}
+                    axisLine={{ stroke: 'hsl(var(--border))' }}
+                    tickLine={false}
+                    domain={yAxisDomain}
+                  />
+                  <Tooltip content={<CustomTooltip />} />
+                  <ReferenceLine
+                    y={0}
+                    stroke="hsl(var(--border))"
+                    strokeDasharray="3 3"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="stock"
+                    stroke="hsl(var(--primary))"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#colorStock)"
+                    dot={<CustomDot />}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+
+            {/* Last Movement Info */}
             {lastMovement && (
-              <div className="rounded-md border bg-muted/40 px-4 py-3 text-sm text-muted-foreground">
-                Last movement {lastMovement.qtyDelta >= 0 ? "added" : "removed"}{" "}
-                <span className="font-medium text-foreground">
-                  {Math.abs(lastMovement.qtyDelta).toLocaleString()} units
-                </span>{" "}
-                on {formatter.format(lastMovement.date)}. Running balance after movement:{" "}
-                <span className="font-medium text-foreground">
-                  {lastMovement.running.toLocaleString()}
-                </span> units.
+              <div className="rounded-lg border bg-muted/30 p-4">
+                <div className="flex items-start gap-3">
+                  <div className={`mt-1 rounded-full p-2 ${lastMovement.qtyDelta >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                    {lastMovement.qtyDelta >= 0 ? (
+                      <TrendingUp className="h-4 w-4" />
+                    ) : (
+                      <TrendingDown className="h-4 w-4" />
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">
+                      Last movement {lastMovement.qtyDelta >= 0 ? 'added' : 'removed'}{' '}
+                      <span className={lastMovement.qtyDelta >= 0 ? 'text-green-600' : 'text-red-600'}>
+                        {Math.abs(lastMovement.qtyDelta).toLocaleString()} units
+                      </span>
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {new Intl.DateTimeFormat('en-US', {
+                        month: 'long',
+                        day: 'numeric',
+                        year: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      }).format(lastMovement.date)}
+                    </p>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      Balance after movement: <span className="font-medium text-foreground">{lastMovement.running.toLocaleString()} units</span>
+                    </p>
+                  </div>
+                </div>
               </div>
             )}
-          </>
+          </div>
         )}
       </CardContent>
     </Card>

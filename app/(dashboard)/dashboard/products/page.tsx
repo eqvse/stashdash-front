@@ -53,49 +53,109 @@ export default function ProductsPage() {
 
     setLoading(true)
     setApiError(false)
-    
+
+    const normalizeFlag = (value: unknown, fallback = false): boolean => {
+      // If value is explicitly set (not null/undefined), process it
+      if (value !== null && value !== undefined) {
+        if (typeof value === "boolean") return value
+        if (typeof value === "number") return value !== 0
+        if (typeof value === "string") {
+          const normalized = value.trim().toLowerCase()
+          if (["1", "true", "yes"].includes(normalized)) return true
+          if (["0", "false", "no", ""].includes(normalized)) return false
+        }
+        // For any other defined value, use Boolean conversion
+        return Boolean(value)
+      }
+      // Only use fallback if value is null/undefined
+      return fallback
+    }
+
+    const normalizeProductFlags = (raw: Product): Product => {
+      // Check for both camelCase and snake_case field names
+      const rawActive = (raw as any).isActive !== undefined ? (raw as any).isActive : (raw as any).is_active;
+      const rawBatch = (raw as any).isBatchTracked !== undefined ? (raw as any).isBatchTracked : (raw as any).is_batch_tracked;
+      const rawSerial = (raw as any).isSerialTracked !== undefined ? (raw as any).isSerialTracked : (raw as any).is_serial_tracked;
+
+      return {
+        ...raw,
+        isActive: normalizeFlag(rawActive, false),
+        isBatchTracked: normalizeFlag(rawBatch, false),
+        isSerialTracked: normalizeFlag(rawSerial, false),
+      }
+    }
+
     // Check if we're in development mode
     const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true'
-    
+
     if (isDevMode) {
       // In dev mode, only use localStorage
       console.log("Development mode: Loading products from localStorage")
       const localProducts = JSON.parse(localStorage.getItem('demo_products') || '[]')
-      const companyProducts = localProducts.filter((p: any) => 
-        p.company === `/api/companies/${currentCompany.companyId}`
-      )
+      const companyProducts = localProducts
+        .filter((p: any) => p.company === `/api/companies/${currentCompany.companyId}`)
+        .map((product: Product) => normalizeProductFlags(product))
       setProducts(companyProducts)
       setLoading(false)
       return
     }
-    
+
     try {
       // Fetch real products from the API
-      const response = await apiClient.getProducts({ 
-        company: currentCompany.companyId 
+      const response = await apiClient.getProducts({
+        company: currentCompany.companyId
       })
-      
+
+      // BACKEND API ISSUE: The API is not returning critical fields
+      if (response.member && response.member.length > 0) {
+        const firstProduct = response.member[0] as any
+        if (firstProduct.is_active === undefined && firstProduct.isActive === undefined) {
+          console.error(`
+=================================================================
+BACKEND API ERROR - Missing Required Fields
+=================================================================
+The /api/products endpoint is NOT returning these database fields:
+- is_active (shows product status)
+- is_batch_tracked (batch tracking requirement)
+- is_serial_tracked (serial tracking requirement)
+
+These fields exist in the database but are missing from the API response.
+
+TO FIX (Backend Developer Action Required):
+1. Update the Product entity serialization to include these fields
+2. Ensure the API Platform normalization context includes:
+   - isActive (or is_active)
+   - isBatchTracked (or is_batch_tracked)
+   - isSerialTracked (or is_serial_tracked)
+3. These fields are documented in API_GUIDE.md and should be returned
+
+Current API Response:
+`, firstProduct)
+          console.error("=================================================================")
+        }
+      }
+
       // Check if we have products in the response
       if (response.member && response.member.length > 0) {
-        setProducts(response.member)
+        setProducts(response.member.map((product) => normalizeProductFlags(product as Product)))
       } else {
         // No products found in API, check localStorage for demo products
         const localProducts = JSON.parse(localStorage.getItem('demo_products') || '[]')
-        const companyProducts = localProducts.filter((p: any) => 
-          p.company === `/api/companies/${currentCompany.companyId}`
-        )
+        const companyProducts = localProducts
+          .filter((p: any) => p.company === `/api/companies/${currentCompany.companyId}`)
+          .map((product: Product) => normalizeProductFlags(product))
         setProducts(companyProducts)
       }
     } catch (error) {
       console.error("Error loading products from API:", error)
       setApiError(true)
-      
+
       // On API error, try to load from localStorage
       const localProducts = JSON.parse(localStorage.getItem('demo_products') || '[]')
-      const companyProducts = localProducts.filter((p: any) => 
-        p.company === `/api/companies/${currentCompany.companyId}`
-      )
-      
+      const companyProducts = localProducts
+        .filter((p: any) => p.company === `/api/companies/${currentCompany.companyId}`)
+        .map((product: Product) => normalizeProductFlags(product))
+
       if (companyProducts.length > 0) {
         console.log("Loading products from localStorage due to API error")
         setProducts(companyProducts)

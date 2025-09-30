@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
@@ -19,84 +19,75 @@ import {
   Package
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
-import { PurchaseOrder, PurchaseOrderStatus } from "@/types/api"
+import { apiClient } from "@/lib/api/client"
+import type { PurchaseOrder, PurchaseOrderStatus, Warehouse } from "@/types/api"
+
+type DisplayPurchaseOrder = PurchaseOrder & {
+  warehouseId: string
+}
+
+const normalizeId = (value: string) => {
+  if (!value) return value
+  const parts = value.split("/")
+  return parts[parts.length - 1] || value
+}
 
 export default function PurchaseOrdersPage() {
   const router = useRouter()
   const { currentCompany } = useCompanyStore()
-  const [orders, setOrders] = useState<PurchaseOrder[]>([])
+  const [orders, setOrders] = useState<DisplayPurchaseOrder[]>([])
+  const [warehouseLookup, setWarehouseLookup] = useState<Record<string, Warehouse>>({})
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
+  const [loadError, setLoadError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (currentCompany) {
-      loadOrders()
+  const loadOrders = useCallback(async () => {
+    if (!currentCompany) {
+      setOrders([])
+      setWarehouseLookup({})
+      setLoading(false)
+      return
     }
-  }, [currentCompany])
 
-  const loadOrders = async () => {
     setLoading(true)
+    setLoadError(null)
     try {
-      // Sample data for demonstration
-      setOrders([
-        {
-          poId: "PO-001",
-          company: currentCompany?.companyId || "",
-          warehouse: "MAIN",
-          supplierName: "Tech Supplies Inc",
-          orderDate: "2024-01-15",
-          expectedDate: "2024-01-20",
-          status: "OPEN",
-          createdAt: "2024-01-15T10:00:00Z"
-        },
-        {
-          poId: "PO-002",
-          company: currentCompany?.companyId || "",
-          warehouse: "EAST",
-          supplierName: "Electronics Wholesale",
-          orderDate: "2024-01-16",
-          expectedDate: "2024-01-22",
-          status: "PARTIAL",
-          createdAt: "2024-01-16T14:30:00Z"
-        },
-        {
-          poId: "PO-003",
-          company: currentCompany?.companyId || "",
-          warehouse: "MAIN",
-          supplierName: "Cable & Accessories Co",
-          orderDate: "2024-01-18",
-          expectedDate: "2024-01-25",
-          status: "DRAFT",
-          createdAt: "2024-01-18T09:15:00Z"
-        },
-        {
-          poId: "PO-004",
-          company: currentCompany?.companyId || "",
-          warehouse: "WEST",
-          supplierName: "Tech Supplies Inc",
-          orderDate: "2024-01-12",
-          expectedDate: "2024-01-17",
-          status: "CLOSED",
-          createdAt: "2024-01-12T16:45:00Z"
-        },
-        {
-          poId: "PO-005",
-          company: currentCompany?.companyId || "",
-          warehouse: "MAIN",
-          supplierName: "Premium Electronics",
-          orderDate: "2024-01-10",
-          expectedDate: "2024-01-15",
-          status: "CANCELLED",
-          createdAt: "2024-01-10T11:20:00Z"
-        }
+      const [ordersResponse, warehousesResponse] = await Promise.all([
+        apiClient.getPurchaseOrders({ company: currentCompany.companyId }),
+        apiClient.getWarehouses(currentCompany.companyId),
       ])
+
+      const orderList = ordersResponse.member ?? ordersResponse["hydra:member"] ?? []
+      const warehouseList = warehousesResponse.member ?? warehousesResponse["hydra:member"] ?? []
+
+      const normalizedOrders: DisplayPurchaseOrder[] = orderList.map((order) => ({
+        ...order,
+        warehouseId: normalizeId(order.warehouse),
+      }))
+
+      const warehouseMap: Record<string, Warehouse> = {}
+      warehouseList.forEach((warehouse) => {
+        warehouseMap[warehouse.warehouseId] = warehouse
+      })
+
+      setOrders(normalizedOrders)
+      setWarehouseLookup(warehouseMap)
     } catch (error) {
       console.error("Error loading orders:", error)
       setOrders([])
+      setWarehouseLookup({})
+      const message = error instanceof Error
+        ? error.message
+        : "Failed to load purchase orders. Please try again."
+      setLoadError(message)
     } finally {
       setLoading(false)
     }
-  }
+  }, [currentCompany])
+
+  useEffect(() => {
+    void loadOrders()
+  }, [loadOrders])
 
   const getStatusBadge = (status: PurchaseOrderStatus) => {
     switch (status) {
@@ -132,11 +123,32 @@ export default function PurchaseOrdersPage() {
     }
   }
 
-  const filteredOrders = orders.filter(order => {
-    return searchTerm === "" || 
-      order.poId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.supplierName.toLowerCase().includes(searchTerm.toLowerCase())
-  })
+  const filteredOrders = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) {
+      return orders
+    }
+
+    return orders.filter(order => (
+      order.poId.toLowerCase().includes(term) ||
+      order.supplierName.toLowerCase().includes(term)
+    ))
+  }, [orders, searchTerm])
+
+  const getWarehouseLabel = (order: DisplayPurchaseOrder) => {
+    const warehouse = warehouseLookup[order.warehouseId]
+    return warehouse?.code || warehouse?.name || order.warehouseId || "-"
+  }
+
+  if (!currentCompany) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <div className="text-muted-foreground">
+          Select or create a company to view purchase orders.
+        </div>
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -155,7 +167,7 @@ export default function PurchaseOrdersPage() {
             Track and manage your purchase orders and supplier deliveries
           </p>
         </div>
-        <Button>
+        <Button onClick={() => router.push("/dashboard/orders/new")}>
           <Plus className="h-4 w-4 mr-2" />
           Create Order
         </Button>
@@ -233,6 +245,11 @@ export default function PurchaseOrdersPage() {
           </div>
         </CardHeader>
         <CardContent>
+          {loadError && (
+            <div className="mb-4 rounded-md border border-yellow-200 bg-yellow-50 p-3 text-sm text-yellow-800">
+              {loadError}
+            </div>
+          )}
           <Table>
             <TableHeader>
               <TableRow>
@@ -263,7 +280,7 @@ export default function PurchaseOrdersPage() {
                     </TableCell>
                     <TableCell>{order.supplierName}</TableCell>
                     <TableCell>
-                      <Badge variant="outline">{order.warehouse}</Badge>
+                      <Badge variant="outline">{getWarehouseLabel(order)}</Badge>
                     </TableCell>
                     <TableCell>
                       {new Date(order.orderDate).toLocaleDateString()}

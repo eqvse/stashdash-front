@@ -184,6 +184,7 @@ export interface PurchaseOrder {
   poId: string
   company: string
   warehouse: string
+  supplier?: string
   supplierName: string
   orderDate: string
   expectedDate?: string
@@ -294,6 +295,7 @@ export interface InventoryMovementInput {
 export interface PurchaseOrderInput {
   company: string
   warehouse: string
+  supplier?: string
   supplierName: string
   orderDate: string
   expectedDate?: string

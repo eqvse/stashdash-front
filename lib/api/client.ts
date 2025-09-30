@@ -484,12 +484,20 @@ export class ApiClient {
   }
 
   async createPurchaseOrder(data: PurchaseOrderInput): Promise<PurchaseOrder> {
-    return this.request('POST', '/purchase_orders', {
+    const payload: Record<string, unknown> = {
       ...data,
       company: `/api/companies/${data.company}`,
       warehouse: `/api/warehouses/${data.warehouse}`,
       status: data.status || 'DRAFT'
-    })
+    }
+
+    if (data.supplier) {
+      payload.supplier = data.supplier.includes('/api/suppliers/')
+        ? data.supplier
+        : `/api/suppliers/${data.supplier}`
+    }
+
+    return this.request('POST', '/purchase_orders', payload)
   }
 
   async updatePurchaseOrder(
