@@ -2,14 +2,15 @@ import { createClient } from '@/lib/supabase/client'
 import type { 
   ApiResponse, 
   ApiError,
-  Product,
-  ProductInput,
+  ProductVariant,
+  ProductVariantInput,
   ProductFamily,
   ProductFamilyInput,
   ProductVariantType,
   InventoryBalance,
   InventoryMovement,
   InventoryMovementInput,
+  InventoryMovementSkuInput,
   Warehouse,
   Category,
   PurchaseOrder,
@@ -36,6 +37,7 @@ export class ApiClient {
     return {
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
+      'Accept': 'application/json, application/ld+json',
     }
   }
 
@@ -51,18 +53,77 @@ export class ApiClient {
       headers,
     }
     
-    if (body) {
+    if (body !== undefined) {
       options.body = JSON.stringify(body)
-    }
-    
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, options)
-    
-    if (!response.ok) {
-      const error: ApiError = await response.json()
-      throw new Error(error.detail || `API request failed: ${error.title}`)
+    } else if (method === 'GET' || method === 'HEAD') {
+      // Remove Content-Type for requests without a body to avoid confusing the backend
+      const headersObj = new Headers(options.headers)
+      headersObj.delete('Content-Type')
+      options.headers = headersObj
     }
 
-    const payload = await response.json()
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, options)
+    const contentType = response.headers.get('content-type') ?? ''
+    const contentLength = response.headers.get('content-length') ?? undefined
+    const isEmptyResponse =
+      response.status === 204 ||
+      response.status === 205 ||
+      (method === 'DELETE' && (!contentType || contentType === '') && (!contentLength || contentLength === '0'))
+
+    if (isEmptyResponse) {
+      return undefined as T
+    }
+
+    const isJson =
+      contentType.includes('application/json') ||
+      contentType.includes('application/ld+json')
+
+    let payload: any = null
+
+    if (isJson) {
+      try {
+        payload = await response.json()
+      } catch (error) {
+        if (response.ok) {
+          throw new Error('Received malformed JSON response from API')
+        }
+      }
+    } else {
+      try {
+        payload = await response.text()
+      } catch {
+        payload = null
+      }
+    }
+
+    if (!response.ok) {
+      if (isJson && payload) {
+        const error = payload as ApiError
+        const detail = error.detail || error.title
+        throw new Error(detail || `API request failed (${response.status})`)
+      }
+
+      if (typeof payload === 'string' && payload.trim().length > 0) {
+        const trimmed = payload.trim()
+        if (trimmed.startsWith('<')) {
+          throw new Error('API request failed: unexpected HTML response')
+        }
+        throw new Error(trimmed)
+      }
+
+      throw new Error(`API request failed (${response.status})`)
+    }
+
+    if (!isJson) {
+      if (typeof payload === 'string' && payload.trim().startsWith('<')) {
+        throw new Error('API request failed: unexpected HTML response')
+      }
+      if (typeof payload === 'string' && payload.trim().length === 0) {
+        return undefined as T
+      }
+      throw new Error('API request failed: expected JSON response')
+    }
+
     return this.normalizeCollectionPayload(payload) as T
   }
 
@@ -154,54 +215,176 @@ export class ApiClient {
     return this.request('GET', `/company_users${params}`)
   }
 
-  // Products
-  async getProducts(filters?: {
+  // Product Variants
+  async getProductVariants(filters?: {
     company?: string
+    family?: string
+    supplier?: string
     name?: string
     sku?: string
     isActive?: boolean
-    category?: string
-  }): Promise<ApiResponse<Product>> {
+    isPrimary?: boolean
+  }): Promise<ApiResponse<ProductVariant>> {
     const params = new URLSearchParams()
-    // The API documentation says to use IRI format, but backend might have a bug
-    // Try sending just the UUID if it looks like a UUID, otherwise send the IRI
+
     if (filters?.company) {
-      // If it already has /api/companies/, use as-is
-      if (filters.company.includes('/api/companies/')) {
-        params.append('company', filters.company)
-      } else {
-        // Otherwise, wrap it in the IRI format
-        params.append('company', `/api/companies/${filters.company}`)
-      }
+      const value = filters.company.includes('/api/companies/')
+        ? filters.company
+        : `/api/companies/${filters.company}`
+      params.append('company', value)
     }
+
+    if (filters?.family) {
+      const value = filters.family.includes('/api/product_families/')
+        ? filters.family
+        : `/api/product_families/${filters.family}`
+      params.append('family', value)
+    }
+
+    if (filters?.supplier) {
+      const value = filters.supplier.includes('/api/suppliers/')
+        ? filters.supplier
+        : `/api/suppliers/${filters.supplier}`
+      params.append('supplier', value)
+    }
+
     if (filters?.name) params.append('name', filters.name)
     if (filters?.sku) params.append('sku', filters.sku)
-    if (filters?.isActive !== undefined) params.append('isActive', String(filters.isActive))
-    if (filters?.category) {
-      if (filters.category.includes('/api/categories/')) {
-        params.append('category', filters.category)
-      } else {
-        params.append('category', `/api/categories/${filters.category}`)
-      }
+
+    if (filters?.isActive !== undefined) {
+      params.append('isActive', String(filters.isActive))
     }
-    
-    return this.request('GET', `/products?${params}`)
+
+    if (filters?.isPrimary !== undefined) {
+      params.append('isPrimary', String(filters.isPrimary))
+    }
+
+    const query = params.toString()
+    const suffix = query ? `?${query}` : ''
+
+    return this.request('GET', `/product_variants${suffix}`)
   }
 
-  async getProduct(id: string): Promise<Product> {
-    return this.request('GET', `/products/${id}`)
+  async getProductVariant(id: string): Promise<ProductVariant> {
+    const variantId = id.includes('/') ? id.split('/').pop() ?? id : id
+    return this.request('GET', `/product_variants/${variantId}`)
   }
 
-  async createProduct(data: ProductInput): Promise<Product> {
-    return this.request('POST', '/products', data)
+  async createProductVariant(data: ProductVariantInput): Promise<ProductVariant> {
+    const payload: Record<string, unknown> = {
+      sku: data.sku,
+      name: data.name,
+      description: data.description,
+      isPrimary: data.isPrimary ?? false,
+      isActive: data.isActive ?? true,
+    }
+
+    payload.company = data.company.includes('/api/companies/')
+      ? data.company
+      : `/api/companies/${data.company}`
+
+    if (data.category) {
+      payload.category = data.category.includes('/api/categories/')
+        ? data.category
+        : `/api/categories/${data.category}`
+    }
+
+    if (data.family) {
+      payload.family = data.family.includes('/api/product_families/')
+        ? data.family
+        : `/api/product_families/${data.family}`
+    }
+
+    if (data.supplier) {
+      payload.supplier = data.supplier.includes('/api/suppliers/')
+        ? data.supplier
+        : `/api/suppliers/${data.supplier}`
+    }
+
+    if (data.supplierSku) {
+      payload.supplierSku = data.supplierSku
+    }
+
+    if (data.variantAttributes && Object.keys(data.variantAttributes).length > 0) {
+      payload.variantAttributes = data.variantAttributes
+    }
+
+    if (data.unitCost !== undefined) {
+      payload.unitCost = String(data.unitCost)
+    }
+
+    if (data.sellingPrice !== undefined) {
+      payload.sellingPrice = String(data.sellingPrice)
+    }
+
+    delete (payload as any).marginPercent
+    delete (payload as any).margin_percent
+
+    if (data.reorderPoint !== undefined) {
+      payload.reorderPoint = String(data.reorderPoint)
+    }
+
+    if (data.reorderQty !== undefined) {
+      payload.reorderQty = String(data.reorderQty)
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('createProductVariant payload', payload)
+    }
+
+    return this.request('POST', '/product_variants', payload)
   }
 
-  async updateProduct(id: string, data: Partial<ProductInput>): Promise<Product> {
-    return this.request('PUT', `/products/${id}`, data)
+  async updateProductVariant(
+    id: string,
+    data: Partial<ProductVariantInput>
+  ): Promise<ProductVariant> {
+    const payload: Record<string, unknown> = {}
+
+    if (data.sku !== undefined) payload.sku = data.sku
+    if (data.name !== undefined) payload.name = data.name
+    if (data.description !== undefined) payload.description = data.description
+    if (data.category !== undefined) {
+      payload.category = data.category
+        ? (data.category.includes('/api/categories/')
+            ? data.category
+            : `/api/categories/${data.category}`)
+        : null
+    }
+    if (data.family !== undefined) {
+      payload.family = data.family
+        ? (data.family.includes('/api/product_families/')
+            ? data.family
+            : `/api/product_families/${data.family}`)
+        : null
+    }
+    if (data.supplier !== undefined) {
+      payload.supplier = data.supplier
+        ? (data.supplier.includes('/api/suppliers/')
+            ? data.supplier
+            : `/api/suppliers/${data.supplier}`)
+        : null
+    }
+    if (data.supplierSku !== undefined) payload.supplierSku = data.supplierSku
+    if (data.variantAttributes !== undefined) payload.variantAttributes = data.variantAttributes
+    if (data.unitCost !== undefined) payload.unitCost = String(data.unitCost)
+    if (data.sellingPrice !== undefined) payload.sellingPrice = String(data.sellingPrice)
+    delete (payload as any).marginPercent
+    delete (payload as any).margin_percent
+    if (data.reorderPoint !== undefined) payload.reorderPoint = data.reorderPoint !== null ? String(data.reorderPoint) : null
+    if (data.reorderQty !== undefined) payload.reorderQty = data.reorderQty !== null ? String(data.reorderQty) : null
+    if (data.isPrimary !== undefined) payload.isPrimary = data.isPrimary
+    if (data.isActive !== undefined) payload.isActive = data.isActive
+
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('updateProductVariant payload', payload)
+    }
+
+    return this.request('PUT', `/product_variants/${id}`, payload)
   }
 
-  async deleteProduct(id: string): Promise<void> {
-    return this.request('DELETE', `/products/${id}`)
+  async deleteProductVariant(id: string): Promise<void> {
+    return this.request('DELETE', `/product_variants/${id}`)
   }
 
   // Product families
@@ -349,11 +532,11 @@ export class ApiClient {
 
   // Inventory
   async getInventoryBalance(
-    productId: string,
+    variantIdOrSku: string,
     warehouseId: string
   ): Promise<InventoryBalance | null> {
     const result = await this.getInventoryBalances({
-      product: productId,
+      variant: variantIdOrSku,
       warehouse: warehouseId,
       itemsPerPage: 1,
     })
@@ -362,18 +545,23 @@ export class ApiClient {
   }
 
   async getInventoryBalances(filters?: {
-    product?: string
+    variantSku?: string
+    variant?: string
     warehouse?: string
     page?: number
     itemsPerPage?: number
   }): Promise<ApiResponse<InventoryBalance>> {
     const params = new URLSearchParams()
 
-    if (filters?.product) {
-      const value = filters.product.includes('/api/products/')
-        ? filters.product
-        : `/api/products/${filters.product}`
-      params.append('product', value)
+    if (filters?.variantSku) {
+      params.append('variant.sku', filters.variantSku)
+    }
+
+    if (filters?.variant) {
+      const value = filters.variant.includes('/api/product_variants/')
+        ? filters.variant
+        : `/api/product_variants/${filters.variant}`
+      params.append('variant', value)
     }
 
     if (filters?.warehouse) {
@@ -405,29 +593,82 @@ export class ApiClient {
 
   async createInventoryMovement(data: InventoryMovementInput): Promise<InventoryMovement> {
     return this.request('POST', '/inventory_movements', {
-      ...data,
-      product: `/api/products/${data.product}`,
+      variant: data.variant.includes('/api/product_variants/')
+        ? data.variant
+        : `/api/product_variants/${data.variant}`,
       warehouse: `/api/warehouses/${data.warehouse}`,
       bin: data.bin ? `/api/stock_bins/${data.bin}` : undefined,
-      // Convert qtyDelta and unitCost to strings as the API expects
+      movementType: data.movementType,
       qtyDelta: String(data.qtyDelta),
-      unitCost: String(data.unitCost)
+      unitCost: data.unitCost !== undefined ? String(data.unitCost) : undefined,
+      actualPrice: data.actualPrice !== undefined ? String(data.actualPrice) : undefined,
+      sourceDoc: data.sourceDoc,
+      sourceLineId: data.sourceLineId,
+      note: data.note,
     })
   }
 
+  async createInventoryMovementBySku(data: InventoryMovementSkuInput): Promise<InventoryMovement> {
+    const payload: Record<string, unknown> = {
+      sku: data.sku,
+      companyId: data.companyId,
+      movementType: data.movementType,
+      qtyDelta: String(data.qtyDelta),
+    }
+
+    if (data.warehouseCode) {
+      payload.warehouseCode = data.warehouseCode
+    }
+
+    if (data.binCode) {
+      payload.binCode = data.binCode
+    }
+
+    if (data.unitCost !== undefined) {
+      payload.unitCost = String(data.unitCost)
+    }
+
+    if (data.actualPrice !== undefined) {
+      payload.actualPrice = String(data.actualPrice)
+    }
+
+    if (data.sourceDoc) {
+      payload.sourceDoc = data.sourceDoc
+    }
+
+    if (data.sourceLineId) {
+      payload.sourceLineId = data.sourceLineId
+    }
+
+    if (data.note) {
+      payload.note = data.note
+    }
+
+    if (data.performedAt) {
+      payload.performedAt = data.performedAt
+    }
+
+    return this.request('POST', '/inventory_movements/by-sku', payload)
+  }
+
   async getInventoryMovements(filters?: {
-    product?: string
+    variantSku?: string
+    variant?: string
     warehouse?: string
     movementType?: string
     company?: string
     itemsPerPage?: number
   }): Promise<ApiResponse<InventoryMovement>> {
     const params = new URLSearchParams()
-    if (filters?.product) {
-      const value = filters.product.includes('/api/products/')
-        ? filters.product
-        : `/api/products/${filters.product}`
-      params.append('product', value)
+    if (filters?.variantSku) {
+      params.append('variant.sku', filters.variantSku)
+    }
+
+    if (filters?.variant) {
+      const value = filters.variant.includes('/api/product_variants/')
+        ? filters.variant
+        : `/api/product_variants/${filters.variant}`
+      params.append('variant', value)
     }
     if (filters?.warehouse) {
       const value = filters.warehouse.includes('/api/warehouses/')
@@ -449,19 +690,24 @@ export class ApiClient {
     return this.request('GET', `/inventory_movements?${params}`)
   }
 
-  async adjustInventory(
-    productId: string,
-    warehouseId: string,
-    adjustment: number,
+  async adjustInventory(data: {
+    sku: string
+    companyId: string
+    qtyDelta: number
+    warehouseCode?: string
     note?: string
-  ): Promise<InventoryMovement> {
-    return this.createInventoryMovement({
-      product: productId,
-      warehouse: warehouseId,
+    unitCost?: number
+    performedAt?: string
+  }): Promise<InventoryMovement> {
+    return this.createInventoryMovementBySku({
+      sku: data.sku,
+      companyId: data.companyId,
       movementType: 'ADJUST',
-      qtyDelta: adjustment,
-      unitCost: 0, // Will use current avg cost
-      note
+      qtyDelta: data.qtyDelta,
+      warehouseCode: data.warehouseCode,
+      note: data.note,
+      unitCost: data.unitCost,
+      performedAt: data.performedAt,
     })
   }
 
@@ -510,27 +756,29 @@ export class ApiClient {
   async addPurchaseOrderLine(data: {
     purchaseOrder: string
     lineNo: number
-    product: string
+    variant: string
     qty: number
     unitCost: number
   }): Promise<PurchaseOrderLine> {
     return this.request('POST', '/purchase_order_lines', {
       ...data,
       purchaseOrder: `/api/purchase_orders/${data.purchaseOrder}`,
-      product: `/api/products/${data.product}`
+      variant: data.variant.includes('/api/product_variants/')
+        ? data.variant
+        : `/api/product_variants/${data.variant}`
     })
   }
 
   async receivePurchaseOrder(
     poId: string,
     lineId: string,
-    productId: string,
+    variantId: string,
     warehouseId: string,
     qty: number,
     unitCost: number
   ): Promise<InventoryMovement> {
     return this.createInventoryMovement({
-      product: productId,
+      variant: variantId,
       warehouse: warehouseId,
       movementType: 'RECEIPT',
       qtyDelta: qty,
@@ -543,7 +791,7 @@ export class ApiClient {
 
   // Real-time subscriptions
   subscribeToInventoryChanges(
-    productId: string,
+    variantId: string,
     callback: (payload: any) => void
   ) {
     return this.supabase
@@ -554,7 +802,7 @@ export class ApiClient {
           event: '*',
           schema: 'public',
           table: 'inventory_movements',
-          filter: `product_id=eq.${productId}`
+          filter: `variant_id=eq.${variantId}`
         },
         callback
       )

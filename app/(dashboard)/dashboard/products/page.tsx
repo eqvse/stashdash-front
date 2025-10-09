@@ -1,184 +1,298 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { 
-  Package,
-  Search,
-  Plus,
-  Edit,
-  Trash2,
-  MoreHorizontal,
-  Filter,
-  RefreshCw,
-  AlertCircle
-} from "lucide-react"
-import { useCompanyStore } from "@/stores/company"
-import { Product } from "@/types/api"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { apiClient } from "@/lib/api/client"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
+import { useCompanyStore } from "@/stores/company"
+import type { ProductFamily, ProductVariant, Supplier } from "@/types/api"
+import { AlertCircle, Edit, Filter, MoreHorizontal, Package, Plus, RefreshCw, Search, Trash2 } from "lucide-react"
+
+interface VariantRow extends ProductVariant {
+  familyId: string | null
+  supplierId: string | null
+  unitCostValue: number
+  sellingPriceValue: number
+  reorderPointValue?: number
+  reorderQtyValue?: number
+}
+
+const DEMO_VARIANTS_KEY = "demo_variants"
+const money = (value: number | undefined) =>
+  typeof value === "number" && Number.isFinite(value)
+    ? new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value)
+    : "—"
+
+const parseNumber = (value: unknown, fallback = 0) => {
+  if (typeof value === "number") return value
+  if (typeof value === "string" && value.trim().length > 0) {
+    const parsed = Number.parseFloat(value)
+    return Number.isFinite(parsed) ? parsed : fallback
+  }
+  return fallback
+}
+
+const extractId = (iriOrId: string | { [key: string]: unknown } | null | undefined) => {
+  if (!iriOrId) return null
+  if (typeof iriOrId === "string") {
+    if (!iriOrId.includes("/")) return iriOrId
+    const parts = iriOrId.split("/")
+    return parts[parts.length - 1] || null
+  }
+  if (typeof iriOrId === "object" && typeof (iriOrId as any)["@id"] === "string") {
+    return extractId((iriOrId as any)["@id"] as string)
+  }
+  return null
+}
+
+const normalizeVariant = (variant: ProductVariant): VariantRow => {
+  const unitCostValue = parseNumber((variant as any).unitCost ?? (variant as any).purchasePrice, 0)
+  const sellingPriceValue = parseNumber((variant as any).sellingPrice, 0)
+  const reorderPointValue = (() => {
+    const raw = (variant as any).reorderPoint ?? (variant as any).reorder_point
+    const parsed = parseNumber(raw, NaN)
+    return Number.isFinite(parsed) ? parsed : undefined
+  })()
+  const reorderQtyValue = (() => {
+    const raw = (variant as any).reorderQty ?? (variant as any).reorder_qty
+    const parsed = parseNumber(raw, NaN)
+    return Number.isFinite(parsed) ? parsed : undefined
+  })()
+
+  return {
+    ...variant,
+    unitCost: unitCostValue,
+    sellingPrice: sellingPriceValue,
+    reorderPoint: reorderPointValue,
+    reorderQty: reorderQtyValue,
+    unitCostValue,
+    sellingPriceValue,
+    reorderPointValue,
+    reorderQtyValue,
+    familyId: extractId(variant.family),
+    supplierId: extractId(variant.supplier),
+  }
+}
+
+const buildDemoData = () => {
+  const now = new Date().toISOString()
+  return {
+    variants: [
+      {
+        variantId: "var-1",
+        sku: "TSHIRT-BLU-M-SUP1",
+        name: "Blue T-Shirt · Medium",
+        description: "Classic blue tee in medium size",
+        family: "/api/product_families/fam-1",
+        supplier: "/api/suppliers/sup-1",
+        unitCost: 15,
+        reorderPoint: 20,
+        reorderQty: 60,
+        variantAttributes: { size: "Medium", color: "Blue" },
+        isPrimary: true,
+        isActive: true,
+        company: "/api/companies/demo",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        variantId: "var-2",
+        sku: "TSHIRT-RED-L-SUP1",
+        name: "Red T-Shirt · Large",
+        description: "Red tee, large size",
+        family: "/api/product_families/fam-1",
+        supplier: "/api/suppliers/sup-1",
+        unitCost: 16.5,
+        reorderPoint: 15,
+        reorderQty: 45,
+        variantAttributes: { size: "Large", color: "Red" },
+        isPrimary: false,
+        isActive: true,
+        company: "/api/companies/demo",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        variantId: "var-3",
+        sku: "HOODIE-GRN-M-SUP2",
+        name: "Green Hoodie · Medium",
+        description: "Fleece hoodie in green",
+        family: "/api/product_families/fam-2",
+        supplier: "/api/suppliers/sup-2",
+        unitCost: 28,
+        reorderPoint: 30,
+        reorderQty: 90,
+        variantAttributes: { size: "Medium", color: "Green" },
+        isPrimary: true,
+        isActive: true,
+        company: "/api/companies/demo",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ] satisfies ProductVariant[],
+    families: [
+      {
+        productFamilyId: "fam-1",
+        familyName: "T-Shirts",
+        variantType: "size_color",
+        expectedVariants: ["Blue / M", "Red / L"],
+        baseSkuPattern: "TSHIRT-{COLOR}-{SIZE}",
+        company: "/api/companies/demo",
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        productFamilyId: "fam-2",
+        familyName: "Hoodies",
+        variantType: "size",
+        expectedVariants: ["Green / M"],
+        company: "/api/companies/demo",
+        createdAt: now,
+        updatedAt: now,
+      },
+    ] satisfies ProductFamily[],
+    suppliers: [
+      {
+        supplierId: "sup-1",
+        company: "/api/companies/demo",
+        name: "Supplier One",
+        status: "active",
+        onTimeRate: "95",
+        totalSpend: "15000",
+      },
+      {
+        supplierId: "sup-2",
+        company: "/api/companies/demo",
+        name: "Supplier Two",
+        status: "active",
+        onTimeRate: "90",
+        totalSpend: "8700",
+      },
+    ] satisfies Supplier[],
+  }
+}
 
 export default function ProductsPage() {
   const router = useRouter()
   const { currentCompany } = useCompanyStore()
-  const [products, setProducts] = useState<Product[]>([])
+  const [variants, setVariants] = useState<VariantRow[]>([])
+  const [familyMap, setFamilyMap] = useState<Record<string, ProductFamily>>({})
+  const [supplierMap, setSupplierMap] = useState<Record<string, Supplier>>({})
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
-  const [apiError, setApiError] = useState(false)
+  const [apiError, setApiError] = useState<string | null>(null)
+
+  const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
 
   useEffect(() => {
-    if (currentCompany) {
-      loadProducts()
-    }
-  }, [currentCompany])
-
-  const loadProducts = async () => {
     if (!currentCompany) {
-      console.log("No company selected, skipping product load")
+      setVariants([])
+      return
+    }
+    loadVariants()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentCompany?.companyId])
+
+  const loadVariants = async () => {
+    if (!currentCompany) {
       setLoading(false)
       return
     }
 
     setLoading(true)
-    setApiError(false)
-
-    const normalizeFlag = (value: unknown, fallback = false): boolean => {
-      // If value is explicitly set (not null/undefined), process it
-      if (value !== null && value !== undefined) {
-        if (typeof value === "boolean") return value
-        if (typeof value === "number") return value !== 0
-        if (typeof value === "string") {
-          const normalized = value.trim().toLowerCase()
-          if (["1", "true", "yes"].includes(normalized)) return true
-          if (["0", "false", "no", ""].includes(normalized)) return false
-        }
-        // For any other defined value, use Boolean conversion
-        return Boolean(value)
-      }
-      // Only use fallback if value is null/undefined
-      return fallback
-    }
-
-    const normalizeProductFlags = (raw: Product): Product => {
-      // Check for both camelCase and snake_case field names
-      const rawActive = (raw as any).isActive !== undefined ? (raw as any).isActive : (raw as any).is_active;
-      const rawBatch = (raw as any).isBatchTracked !== undefined ? (raw as any).isBatchTracked : (raw as any).is_batch_tracked;
-      const rawSerial = (raw as any).isSerialTracked !== undefined ? (raw as any).isSerialTracked : (raw as any).is_serial_tracked;
-
-      return {
-        ...raw,
-        isActive: normalizeFlag(rawActive, false),
-        isBatchTracked: normalizeFlag(rawBatch, false),
-        isSerialTracked: normalizeFlag(rawSerial, false),
-      }
-    }
-
-    // Check if we're in development mode
-    const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === 'true'
-
-    if (isDevMode) {
-      // In dev mode, only use localStorage
-      console.log("Development mode: Loading products from localStorage")
-      const localProducts = JSON.parse(localStorage.getItem('demo_products') || '[]')
-      const companyProducts = localProducts
-        .filter((p: any) => p.company === `/api/companies/${currentCompany.companyId}`)
-        .map((product: Product) => normalizeProductFlags(product))
-      setProducts(companyProducts)
-      setLoading(false)
-      return
-    }
+    setApiError(null)
 
     try {
-      // Fetch real products from the API
-      const response = await apiClient.getProducts({
-        company: currentCompany.companyId
-      })
-
-      // BACKEND API ISSUE: The API is not returning critical fields
-      if (response.member && response.member.length > 0) {
-        const firstProduct = response.member[0] as any
-        if (firstProduct.is_active === undefined && firstProduct.isActive === undefined) {
-          console.error(`
-=================================================================
-BACKEND API ERROR - Missing Required Fields
-=================================================================
-The /api/products endpoint is NOT returning these database fields:
-- is_active (shows product status)
-- is_batch_tracked (batch tracking requirement)
-- is_serial_tracked (serial tracking requirement)
-
-These fields exist in the database but are missing from the API response.
-
-TO FIX (Backend Developer Action Required):
-1. Update the Product entity serialization to include these fields
-2. Ensure the API Platform normalization context includes:
-   - isActive (or is_active)
-   - isBatchTracked (or is_batch_tracked)
-   - isSerialTracked (or is_serial_tracked)
-3. These fields are documented in API_GUIDE.md and should be returned
-
-Current API Response:
-`, firstProduct)
-          console.error("=================================================================")
+      if (isDevMode) {
+        const stored = localStorage.getItem(DEMO_VARIANTS_KEY)
+        const seed = stored ? JSON.parse(stored) : buildDemoData()
+        if (!stored) {
+          localStorage.setItem(DEMO_VARIANTS_KEY, JSON.stringify(seed))
         }
+        setVariants(seed.variants.map(normalizeVariant))
+        setFamilyMap(Object.fromEntries(seed.families.map((family: ProductFamily) => [family.productFamilyId, family])))
+        setSupplierMap(Object.fromEntries(seed.suppliers.map((supplier: Supplier) => [supplier.supplierId, supplier])))
+        return
       }
 
-      // Check if we have products in the response
-      if (response.member && response.member.length > 0) {
-        setProducts(response.member.map((product) => normalizeProductFlags(product as Product)))
-      } else {
-        // No products found in API, check localStorage for demo products
-        const localProducts = JSON.parse(localStorage.getItem('demo_products') || '[]')
-        const companyProducts = localProducts
-          .filter((p: any) => p.company === `/api/companies/${currentCompany.companyId}`)
-          .map((product: Product) => normalizeProductFlags(product))
-        setProducts(companyProducts)
-      }
+      const [variantsResponse, familiesResponse, suppliersResponse] = await Promise.all([
+        apiClient.getProductVariants({ company: currentCompany.companyId }),
+        apiClient.getProductFamilies({ company: currentCompany.companyId }),
+        apiClient.getSuppliers({ companyId: currentCompany.companyId }),
+      ])
+
+      const variantRows = (variantsResponse.member ?? []).map((variant) => normalizeVariant(variant as ProductVariant))
+      const families = Object.fromEntries(
+        (familiesResponse.member ?? []).map((family) => [family.productFamilyId, family])
+      )
+      const suppliers = Object.fromEntries(
+        (suppliersResponse.member ?? []).map((supplier) => [supplier.supplierId, supplier])
+      )
+
+      setVariants(variantRows)
+      setFamilyMap(families)
+      setSupplierMap(suppliers)
     } catch (error) {
-      console.error("Error loading products from API:", error)
-      setApiError(true)
-
-      // On API error, try to load from localStorage
-      const localProducts = JSON.parse(localStorage.getItem('demo_products') || '[]')
-      const companyProducts = localProducts
-        .filter((p: any) => p.company === `/api/companies/${currentCompany.companyId}`)
-        .map((product: Product) => normalizeProductFlags(product))
-
-      if (companyProducts.length > 0) {
-        console.log("Loading products from localStorage due to API error")
-        setProducts(companyProducts)
-      } else {
-        setProducts([])
+      console.error("Failed to load product variants", error)
+      setApiError(
+        error instanceof Error
+          ? error.message
+          : "Unable to load product variants. Please try again."
+      )
+      try {
+        const stored = localStorage.getItem(DEMO_VARIANTS_KEY)
+        if (stored) {
+          const seed = JSON.parse(stored) as ReturnType<typeof buildDemoData>
+          setVariants(seed.variants.map(normalizeVariant))
+          setFamilyMap(Object.fromEntries(seed.families.map((family: ProductFamily) => [family.productFamilyId, family])))
+          setSupplierMap(Object.fromEntries(seed.suppliers.map((supplier: Supplier) => [supplier.supplierId, supplier])))
+        } else {
+          setVariants([])
+        }
+      } catch (fallbackError) {
+        console.warn('Unable to load fallback variants', fallbackError)
+        setVariants([])
       }
-      
-      console.log("Note: Backend API is not available. Products are being loaded from localStorage.")
     } finally {
       setLoading(false)
     }
   }
 
-  const filteredProducts = products.filter(product => {
-    return searchTerm === "" || 
-      product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      product.sku.toLowerCase().includes(searchTerm.toLowerCase())
-  })
+  const filteredVariants = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase()
+    if (!term) return variants
+    return variants.filter((variant) => {
+      const familyName = variant.familyId ? familyMap[variant.familyId]?.familyName ?? "" : ""
+      const supplierName = variant.supplierId ? supplierMap[variant.supplierId]?.name ?? "" : ""
+      return (
+        variant.name.toLowerCase().includes(term) ||
+        variant.sku.toLowerCase().includes(term) ||
+        familyName.toLowerCase().includes(term) ||
+        supplierName.toLowerCase().includes(term)
+      )
+    })
+  }, [variants, searchTerm, familyMap, supplierMap])
+
+  const statusBadge = (variant: VariantRow) =>
+    variant.isActive ? (
+      <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200">
+        Active
+      </Badge>
+    ) : (
+      <Badge variant="outline" className="bg-slate-100 text-slate-500 border-slate-200">
+        Inactive
+      </Badge>
+    )
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-96">
-        <div className="text-muted-foreground">Loading products...</div>
+      <div className="flex h-96 items-center justify-center">
+        <div className="text-muted-foreground">Loading variants…</div>
       </div>
     )
   }
@@ -186,235 +300,163 @@ Current API Response:
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">Products</h1>
-          <p className="text-muted-foreground">
-            Manage your product catalog and SKUs
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="rounded-full bg-primary/10 p-3">
+            <Package className="h-5 w-5 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">Product Variants</h1>
+            <p className="text-muted-foreground">
+              SKUs are now the primary entity. Manage pricing, supplier, and activation per variant.
+            </p>
+          </div>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={() => loadProducts()} disabled={loading}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-            Refresh
+          <Button variant="outline" onClick={loadVariants}>
+            <RefreshCw className="mr-2 h-4 w-4" /> Refresh
           </Button>
           <Button onClick={() => router.push("/dashboard/products/new")}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Product
+            <Plus className="mr-2 h-4 w-4" /> New Variant
           </Button>
         </div>
       </div>
 
-      {/* Development Mode Notification */}
-      {process.env.NEXT_PUBLIC_DEV_MODE === 'true' && (
-        <Card className="border-blue-200 bg-blue-50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-blue-600" />
-              <CardTitle className="text-base">Development Mode Active</CardTitle>
-            </div>
-            <CardDescription className="text-sm">
-              Running in development mode - using local storage instead of backend API. 
-              Set NEXT_PUBLIC_DEV_MODE=false in .env.local to use the real backend.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
-      {/* API Error Notification */}
-      {apiError && process.env.NEXT_PUBLIC_DEV_MODE !== 'true' && (
-        <Card className="border-yellow-200 bg-yellow-50">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <AlertCircle className="h-5 w-5 text-yellow-600" />
-              <CardTitle className="text-base">Backend Connection Issue</CardTitle>
-            </div>
-            <CardDescription className="text-sm">
-              Unable to connect to the backend API. Products are being loaded from local storage. 
-              Any products you add will be saved locally until the backend is available.
-            </CardDescription>
-          </CardHeader>
-        </Card>
-      )}
-
-      {/* Summary Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Products</CardTitle>
-            <Package className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{products.length}</div>
-            <p className="text-xs text-muted-foreground">In catalog</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Products</CardTitle>
-            <span className="text-sm text-green-600">●</span>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {products.filter(p => p.isActive).length}
-            </div>
-            <p className="text-xs text-muted-foreground">Currently selling</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Serial Tracked</CardTitle>
-            <span className="text-sm text-blue-600">#</span>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {products.filter(p => p.isSerialTracked).length}
-            </div>
-            <p className="text-xs text-muted-foreground">Require serial numbers</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Batch Tracked</CardTitle>
-            <span className="text-sm text-purple-600">□</span>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">
-              {products.filter(p => p.isBatchTracked).length}
-            </div>
-            <p className="text-xs text-muted-foreground">Require batch/lot numbers</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Products Table */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle>Product Catalog</CardTitle>
-            <div className="flex gap-2">
+        <CardHeader className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+         <CardTitle>Variant Catalog</CardTitle>
+              <CardDescription>Search by SKU, name, family, or supplier.</CardDescription>
+            </div>
+            <div className="flex items-center gap-2">
               <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
+                <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search products..."
+                  className="pl-9"
+                  placeholder="Search variants…"
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8 w-[300px]"
+                  onChange={(event) => setSearchTerm(event.target.value)}
                 />
               </div>
-              <Button variant="outline" size="icon">
-                <Filter className="h-4 w-4" />
+              <Button variant="outline">
+                <Filter className="mr-2 h-4 w-4" /> Filters
               </Button>
             </div>
           </div>
+
+          {apiError && (
+            <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+              <AlertCircle className="h-4 w-4" />
+              <span>{apiError}</span>
+            </div>
+          )}
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>SKU</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>UOM</TableHead>
-                <TableHead>ABC Class</TableHead>
-                <TableHead>Cost Method</TableHead>
-                <TableHead>Tracking</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredProducts.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="text-center text-muted-foreground">
-                    No products found. Add your first product to get started.
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredProducts.map((product) => (
-                  <TableRow key={product.productId}>
-                    <TableCell className="font-medium">{product.sku}</TableCell>
-                    <TableCell>{product.name}</TableCell>
-                    <TableCell>{product.uom || 'pcs'}</TableCell>
-                    <TableCell>
-                      {product.abcClass && (
-                        <Badge variant={
-                          product.abcClass === 'A' ? 'default' :
-                          product.abcClass === 'B' ? 'secondary' :
-                          'outline'
-                        }>
-                          Class {product.abcClass}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>{product.costMethod || 'AVG'}</TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        {product.isSerialTracked && (
-                          <Badge variant="outline" className="text-xs">Serial</Badge>
-                        )}
-                        {product.isBatchTracked && (
-                          <Badge variant="outline" className="text-xs">Batch</Badge>
-                        )}
-                        {!product.isSerialTracked && !product.isBatchTracked && (
-                          <span className="text-muted-foreground text-sm">None</span>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={product.isActive ? "success" : "secondary"}>
-                        {product.isActive ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" className="h-8 w-8 p-0">
-                            <span className="sr-only">Open menu</span>
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem
-                            onSelect={(event) => {
-                              event.preventDefault()
-                              router.push(`/dashboard/products/${product.productId}/edit`)
-                            }}
-                          >
-                            <Edit className="mr-2 h-4 w-4" />
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={(event) => {
-                              event.preventDefault()
-                              router.push(`/dashboard/products/${product.productId}`)
-                            }}
-                          >
-                            View Details
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={(event) => {
-                              event.preventDefault()
-                              router.push(`/dashboard/products/${product.productId}/stock`)
-                            }}
-                          >
-                            View Stock Levels
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="text-destructive">
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
+          {filteredVariants.length === 0 ? (
+            <div className="flex h-40 flex-col items-center justify-center gap-3 text-center">
+              <Package className="h-10 w-10 text-muted-foreground" />
+              <div className="space-y-1">
+                <div className="font-medium">No variants found</div>
+                <p className="text-sm text-muted-foreground">
+                  Try adjusting your filters or create a new variant.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>SKU</TableHead>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Family</TableHead>
+                    <TableHead>Supplier</TableHead>
+                    <TableHead className="text-right">Unit Cost</TableHead>
+                    <TableHead className="text-right">Selling Price</TableHead>
+                    <TableHead className="text-right">Reorder Point</TableHead>
+                    <TableHead className="text-right">Reorder Qty</TableHead>
+                    <TableHead className="text-center">Primary</TableHead>
+                    <TableHead className="text-center">Status</TableHead>
+                    <TableHead className="w-14" />
                   </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
+                </TableHeader>
+                <TableBody>
+                  {filteredVariants.map((variant) => {
+                    const familyName = variant.familyId ? familyMap[variant.familyId]?.familyName ?? "—" : "—"
+                    const supplierName = variant.supplierId ? supplierMap[variant.supplierId]?.name ?? variant.supplierId : "—"
+                    const sizeLabel = (() => {
+                      const attrs = (variant as ProductVariant).variantAttributes
+                      if (!attrs) return null
+                      const size = attrs.size ?? attrs.Size
+                      const color = attrs.color ?? attrs.Color
+                      if (size && color) return `${size} / ${color}`
+                      if (size) return String(size)
+                      if (color) return String(color)
+                      return null
+                    })()
+                    return (
+                      <TableRow key={variant.variantId}>
+                        <TableCell className="font-mono text-sm">{variant.sku}</TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="font-medium">{variant.name}</span>
+                            {sizeLabel && (
+                              <span className="text-xs text-muted-foreground">{sizeLabel}</span>
+                            )}
+                            {variant.description && (
+                              <span className="text-sm text-muted-foreground line-clamp-1">{variant.description}</span>
+                            )}
+                          </div>
+                        </TableCell>
+                        <TableCell>{familyName}</TableCell>
+                        <TableCell>{supplierName}</TableCell>
+                        <TableCell className="text-right">{money(variant.unitCostValue)}</TableCell>
+                        <TableCell className="text-right">{money(variant.sellingPriceValue)}</TableCell>
+                        <TableCell className="text-right">{variant.reorderPointValue ?? "—"}</TableCell>
+                        <TableCell className="text-right">{variant.reorderQtyValue ?? "—"}</TableCell>
+                        <TableCell className="text-center">
+                          {variant.isPrimary ? (
+                            <Badge variant="secondary" className="bg-sky-100 text-sky-700 border-sky-200">
+                              Primary
+                            </Badge>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">{statusBadge(variant)}</TableCell>
+                        <TableCell className="text-right">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon">
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Open menu</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuLabel>Variant actions</DropdownMenuLabel>
+                              <DropdownMenuItem onClick={() => router.push(`/dashboard/products/${variant.variantId}`)}>
+                                View details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => router.push(`/dashboard/products/${variant.variantId}/stock`)}>
+                                Stock by warehouse
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => router.push(`/dashboard/products/${variant.variantId}/edit`)}>
+                                <Edit className="mr-2 h-4 w-4" /> Edit variant
+                              </DropdownMenuItem>
+                              <DropdownMenuItem disabled>
+                                <Trash2 className="mr-2 h-4 w-4" /> Archive (coming soon)
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

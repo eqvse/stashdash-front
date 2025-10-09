@@ -49,6 +49,8 @@ export default function SuppliersPage() {
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const [apiError, setApiError] = useState<string | null>(null)
+  const [feedback, setFeedback] = useState<string | null>(null)
+  const [deletingSupplierId, setDeletingSupplierId] = useState<string | null>(null)
 
   useEffect(() => {
     if (currentCompany) {
@@ -59,6 +61,7 @@ export default function SuppliersPage() {
   const loadSuppliers = async () => {
     setLoading(true)
     setApiError(null)
+    setFeedback(null)
 
     try {
       if (!currentCompany) {
@@ -80,6 +83,39 @@ export default function SuppliersPage() {
       setSuppliers([])
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleRemoveSupplier = async (supplier: Supplier) => {
+    if (!supplier?.supplierId || deletingSupplierId) {
+      return
+    }
+
+    const confirmationMessage = `Remove supplier "${supplier.name}"? This action cannot be undone.`
+    const confirmDelete = window.confirm(confirmationMessage)
+    if (!confirmDelete) {
+      return
+    }
+
+    setDeletingSupplierId(supplier.supplierId)
+    setApiError(null)
+    setFeedback(null)
+
+    try {
+      await apiClient.deleteSupplier(supplier.supplierId)
+      setSuppliers((previous) =>
+        previous.filter((existing) => existing.supplierId !== supplier.supplierId)
+      )
+      setFeedback(`Supplier "${supplier.name}" removed.`)
+    } catch (error) {
+      console.error("Error deleting supplier:", error)
+      setApiError(
+        error instanceof Error
+          ? error.message
+          : "Failed to remove supplier. Please try again."
+      )
+    } finally {
+      setDeletingSupplierId(null)
     }
   }
 
@@ -143,6 +179,15 @@ export default function SuppliersPage() {
             <CardDescription className="text-sm">
               {apiError}
             </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+
+      {feedback && (
+        <Card className="border-green-200 bg-green-50">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Supplier updated</CardTitle>
+            <CardDescription className="text-sm">{feedback}</CardDescription>
           </CardHeader>
         </Card>
       )}
@@ -278,7 +323,13 @@ export default function SuppliersPage() {
                             <DropdownMenuItem>Edit Supplier</DropdownMenuItem>
                             <DropdownMenuItem>View Purchase Orders</DropdownMenuItem>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem className="text-destructive">
+                            <DropdownMenuItem
+                              className="text-destructive"
+                              disabled={deletingSupplierId === supplier.supplierId}
+                              onSelect={() => {
+                                void handleRemoveSupplier(supplier)
+                              }}
+                            >
                               <Trash2 className="mr-2 h-4 w-4" />
                               Remove
                             </DropdownMenuItem>

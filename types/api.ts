@@ -53,28 +53,25 @@ export interface Category {
   company: string
 }
 
-export interface Product {
-  productId: string
+export interface ProductVariant {
+  variantId: string
   sku: string
   name: string
-  company: string
+  description?: string
   category?: string
-  eanCode?: string
-  abcClass?: 'A' | 'B' | 'C'
-  uom?: string
-  lengthMm?: number
-  widthMm?: number
-  heightMm?: number
-  weightG?: number
-  costMethod?: 'AVG' | 'FIFO' | 'LIFO' | 'STANDARD'
-  vatRate?: string
-  isBatchTracked?: boolean
-  isSerialTracked?: boolean
-  isActive?: boolean
+  company: string
+  family?: string | ProductFamily
+  supplier?: string | Supplier
+  supplierSku?: string
+  variantAttributes?: Record<string, string | number | null>
+  unitCost?: number
+  sellingPrice?: number
+  reorderPoint?: number
+  reorderQty?: number
+  isPrimary?: boolean
+  isActive: boolean
   createdAt: string
   updatedAt: string
-  variantAttributes?: Record<string, string | number | null>
-  family?: string | ProductFamily
 }
 
 export type ProductVariantType = 'size' | 'color' | 'size_color' | 'other'
@@ -83,10 +80,12 @@ export interface ProductFamily {
   productFamilyId: string
   familyName: string
   familyCode?: string
-  variantType: ProductVariantType
+  description?: string
+  variantType: ProductVariantType | null
   expectedVariants: string[]
   baseSkuPattern?: string
   notes?: string
+  isActive?: boolean
   company: string
   createdAt: string
   updatedAt: string
@@ -117,8 +116,13 @@ export interface StockBin {
 }
 
 export interface InventoryBalance {
-  product: string
+  balanceId?: string
+  variant: string
+  product?: string
+  sku: string
   warehouse: string
+  displayName?: string
+  warehouseName?: string
   qtyOnHand: number
   qtyCommitted: number
   qtyInTransit: number
@@ -143,12 +147,15 @@ export type MovementType =
 
 export interface InventoryMovement {
   movementId: string
-  product: string
+  variant: string
+  sku: string
   warehouse: string
   bin?: string
   movementType: MovementType
   qtyDelta: number
   unitCost: number
+  actualPrice?: number
+  marginAmount?: number
   sourceDoc?: string
   sourceLineId?: string
   note?: string
@@ -161,7 +168,7 @@ export interface InventoryMovement {
 
 export interface StockLot {
   lotId: string
-  product: string
+  variant: string
   warehouse: string
   bin?: string
   lotNumber?: string
@@ -195,7 +202,7 @@ export interface PurchaseOrder {
 export interface PurchaseOrderLine {
   purchaseOrder: string
   lineNo: number
-  product: string
+  variant: string
   qty: number
   unitCost: number
   qtyReceived: number
@@ -232,44 +239,7 @@ export interface SupplierInput {
   notes?: string
 }
 
-export interface PriceList {
-  priceListId: string
-  name: string
-  company: string
-  currency: string
-  isDefault?: boolean
-}
-
-export interface PriceListItem {
-  priceList: string
-  product: string
-  validFrom: string
-  validTo?: string
-  unitPrice: number
-  minQty?: number
-  marginPercent?: number
-}
-
 // Form input types
-export interface ProductInput {
-  sku: string
-  name: string
-  company: string
-  category?: string
-  eanCode?: string
-  abcClass?: 'A' | 'B' | 'C'
-  uom?: string
-  lengthMm?: number
-  widthMm?: number
-  heightMm?: number
-  weightG?: number
-  costMethod?: 'AVG' | 'FIFO' | 'LIFO' | 'STANDARD'
-  vatRate?: string
-  isBatchTracked?: boolean
-  isSerialTracked?: boolean
-  isActive?: boolean
-}
-
 export interface ProductFamilyInput {
   familyName: string
   variantType: ProductVariantType
@@ -280,16 +250,50 @@ export interface ProductFamilyInput {
   company: string
 }
 
+export interface ProductVariantInput {
+  sku: string
+  name: string
+  description?: string
+  category?: string
+  company: string
+  family?: string
+  supplier?: string
+  supplierSku?: string
+  variantAttributes?: Record<string, string | number | null>
+  unitCost?: number
+  sellingPrice?: number
+  reorderPoint?: number
+  reorderQty?: number
+  isPrimary?: boolean
+  isActive?: boolean
+}
+
 export interface InventoryMovementInput {
-  product: string
+  variant: string
   warehouse: string
   bin?: string
   movementType: MovementType
   qtyDelta: number
-  unitCost: number
+  unitCost?: number
+  actualPrice?: number
   sourceDoc?: string
   sourceLineId?: string
   note?: string
+}
+
+export interface InventoryMovementSkuInput {
+  sku: string
+  companyId: string
+  movementType: MovementType
+  qtyDelta: number
+  warehouseCode?: string
+  binCode?: string
+  unitCost?: number
+  actualPrice?: number
+  sourceDoc?: string
+  sourceLineId?: string
+  note?: string
+  performedAt?: string
 }
 
 export interface PurchaseOrderInput {

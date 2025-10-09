@@ -17,7 +17,58 @@ import {
 } from "lucide-react"
 import { useCompanyStore } from "@/stores/company"
 import { apiClient } from "@/lib/api/client"
-import type { InventoryMovement, Product, ProductFamily } from "@/types/api"
+import type { InventoryMovement, ProductFamily, ProductVariant } from "@/types/api"
+
+const DEMO_VARIANTS_KEY = "demo_variants"
+
+const buildDemoMovements = (): InventoryMovement[] => {
+  const now = new Date()
+  return [
+    {
+      movementId: "demo-move-1",
+      variant: "/api/product_variants/var-1",
+      sku: "TSHIRT-BLU-M-SUP1",
+      warehouse: "/api/warehouses/wh-1",
+      movementType: "RECEIPT",
+      qtyDelta: 40,
+      unitCost: 18,
+      actualPrice: 32,
+      marginAmount: 14,
+      performedAt: new Date(now.getTime() - 1000 * 60 * 60 * 2).toISOString(),
+      sourceDoc: "PO-1001",
+      productDisplayName: "T-Shirts · Blue Tee · TSHIRT-BLU-M-SUP1",
+      warehouseName: "Main Warehouse",
+    },
+    {
+      movementId: "demo-move-2",
+      variant: "/api/product_variants/var-2",
+      sku: "TSHIRT-RED-L-SUP1",
+      warehouse: "/api/warehouses/wh-1",
+      movementType: "SHIPMENT",
+      qtyDelta: -5,
+      unitCost: 19,
+      actualPrice: 34,
+      marginAmount: 15,
+      performedAt: new Date(now.getTime() - 1000 * 60 * 60 * 5).toISOString(),
+      sourceDoc: "ORDER-483",
+      productDisplayName: "T-Shirts · Red Tee · TSHIRT-RED-L-SUP1",
+      warehouseName: "Main Warehouse",
+    },
+    {
+      movementId: "demo-move-3",
+      variant: "/api/product_variants/var-3",
+      sku: "HOODIE-GRN-M-SUP2",
+      warehouse: "/api/warehouses/wh-2",
+      movementType: "ADJUST",
+      qtyDelta: -2,
+      unitCost: 28,
+      performedAt: new Date(now.getTime() - 1000 * 60 * 60 * 12).toISOString(),
+      sourceDoc: "COUNT-22",
+      productDisplayName: "Hoodies · Green Hoodie · HOODIE-GRN-M-SUP2",
+      warehouseName: "East Coast DC",
+    },
+  ]
+}
 
 export default function DashboardPage() {
   const { currentCompany } = useCompanyStore()
@@ -50,6 +101,14 @@ export default function DashboardPage() {
     setLoadingMovements(true)
     setMovementError(null)
 
+    const isDevMode = process.env.NEXT_PUBLIC_DEV_MODE === "true"
+
+    if (isDevMode) {
+      setMovements(buildDemoMovements())
+      setLoadingMovements(false)
+      return
+    }
+
     try {
       const response = await apiClient.getInventoryMovements({
         company: currentCompany.companyId,
@@ -71,36 +130,36 @@ export default function DashboardPage() {
         )
         .slice(0, 6)
 
-      const productIris = Array.from(
+      const variantIris = Array.from(
         new Set(
           sorted
-            .map((movement) => movement.product)
+            .map((movement) => movement.variant)
             .filter((value): value is string => Boolean(value))
         )
       )
 
-      const productMap = new Map<string, Product>()
+      const variantMap = new Map<string, ProductVariant>()
 
       await Promise.all(
-        productIris.map(async (iri) => {
-          const productId = iri.split("/").pop()
-          if (!productId) {
+        variantIris.map(async (iri) => {
+          const variantId = iri.split("/").pop()
+          if (!variantId) {
             return
           }
 
           try {
-            const product = await apiClient.getProduct(productId)
-            productMap.set(iri, product)
+            const variant = await apiClient.getProductVariant(variantId)
+            variantMap.set(iri, variant)
           } catch (error) {
-            console.error("Failed to load product for movement", { iri, error })
+            console.error("Failed to load variant for movement", { iri, error })
           }
         })
       )
 
       const familyIris = Array.from(
         new Set(
-          Array.from(productMap.values())
-            .map((product) => (typeof product.family === "string" ? product.family : null))
+          Array.from(variantMap.values())
+            .map((variant) => (typeof variant.family === "string" ? variant.family : null))
             .filter((value): value is string => Boolean(value))
         )
       )
@@ -123,25 +182,53 @@ export default function DashboardPage() {
       )
 
       const enriched = sorted.map((movement) => {
-        const product = movement.product ? productMap.get(movement.product) : undefined
+        const variant = movement.variant ? variantMap.get(movement.variant) : undefined
 
         let displayName: string | undefined
-        if (product) {
-          const familyName = extractFamilyName(product.family, familyMap)
-          const variantLabel = extractVariantLabel(product.variantAttributes)
-          const parts = [familyName ?? product.name, variantLabel, product.sku]
-          displayName = parts.filter(Boolean).join(" - ")
+        if (variant) {
+          const familyName = extractFamilyName(variant.family, familyMap)
+          const parts = [familyName, variant.name, variant.sku]
+          displayName = parts.filter(Boolean).join(" · ")
         }
 
         return {
           ...movement,
-          productDisplayName: displayName ?? movement.productName ?? movement.product,
+          productDisplayName: displayName ?? movement.productName ?? movement.sku ?? movement.variant,
         }
       })
 
       setMovements(enriched)
     } catch (error) {
       console.error("Failed to load inventory movements", error)
+
+      if (typeof window !== "undefined") {
+        try {
+          const raw = localStorage.getItem(DEMO_VARIANTS_KEY)
+          if (raw) {
+            const parsed = JSON.parse(raw) as { variants?: ProductVariant[] }
+            const fallbackVariants = parsed.variants ?? []
+            const fallbackMoves = buildDemoMovements().map((movement) => {
+              const match = fallbackVariants.find((variant) => movement.variant.endsWith(variant.variantId))
+              if (match) {
+                const familyName = typeof match.family === "string" ? undefined : match.family?.familyName
+                const displayParts = [familyName, match.name, match.sku].filter(Boolean)
+                return {
+                  ...movement,
+                  productDisplayName: displayParts.join(" · ") || movement.productDisplayName,
+                }
+              }
+              return movement
+            })
+
+            setMovements(fallbackMoves)
+            setLoadingMovements(false)
+            return
+          }
+        } catch (fallbackError) {
+          console.warn("Failed to build fallback movements", fallbackError)
+        }
+      }
+
       setMovementError("Could not load recent movements")
     } finally {
       setLoadingMovements(false)
@@ -409,10 +496,10 @@ function RecentMovements({ movements, metadata, loading, error, onRetry }: Recen
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium">
-                  {movement.productDisplayName ?? movement.productName ?? movement.product ?? "Unknown product"}
+                  {movement.productDisplayName ?? movement.productName ?? movement.sku ?? movement.variant ?? "Unknown variant"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {movement.warehouseName ?? movement.warehouse ?? "Unknown warehouse"}
+                  {movement.warehouseName ?? (typeof movement.warehouse === "string" ? movement.warehouse.split("/").pop() : movement.warehouse) ?? "Unknown warehouse"}
                 </p>
               </div>
             </div>
@@ -432,7 +519,7 @@ function RecentMovements({ movements, metadata, loading, error, onRetry }: Recen
 }
 
 function extractFamilyName(
-  family: Product["family"],
+  family: ProductVariant["family"],
   familyMap: Map<string, ProductFamily>
 ): string | undefined {
   if (!family) {
@@ -445,30 +532,6 @@ function extractFamilyName(
 
   if (typeof family === "string") {
     return familyMap.get(family)?.familyName
-  }
-
-  return undefined
-}
-
-function extractVariantLabel(
-  attributes?: Record<string, string | number | null>
-): string | undefined {
-  if (!attributes) {
-    return undefined
-  }
-
-  const keys = Object.keys(attributes)
-  for (const key of ["size", "Size", "variant", "Variant"]) {
-    if (key in attributes && attributes[key] != null) {
-      return String(attributes[key])
-    }
-  }
-
-  for (const key of keys) {
-    const value = attributes[key]
-    if (value != null) {
-      return String(value)
-    }
   }
 
   return undefined
