@@ -522,8 +522,8 @@ const filteredInventory = useMemo(() => {
 
   const renderStockStatus = (balance: InventoryBalance) => {
     if (balance.qtyOnHand === 0) return { label: "Out of Stock", variant: "destructive" as const }
-    if (balance.reorderPoint && balance.qtyOnHand <= balance.reorderPoint) return { label: "Low Stock", variant: "warning" as const }
-    if (balance.qtyOnHand > (balance.reorderPoint || 0) * 2) return { label: "Well Stocked", variant: "success" as const }
+    if (balance.reorderPoint && balance.qtyOnHand <= balance.reorderPoint) return { label: "Low Stock", variant: "secondary" as const }
+    if (balance.qtyOnHand > (balance.reorderPoint || 0) * 2) return { label: "Well Stocked", variant: "outline" as const }
     return { label: "In Stock", variant: "default" as const }
   }
 
