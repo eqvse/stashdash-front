@@ -44,6 +44,7 @@ const sidebarItems: SidebarItem[] = [
     subItems: [
       { title: "All Products", href: "/dashboard/products" },
       { title: "Add Product", href: "/dashboard/products/new" },
+      { title: "Product Families", href: "/dashboard/products/families" },
       { title: "Create Product Family", href: "/dashboard/products/families/new" },
     ]
   },
