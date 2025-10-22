@@ -4,8 +4,7 @@ export const productFamilyFormSchema = z.object({
   familyName: z.string()
     .min(2, "Family name must be at least 2 characters")
     .max(255, "Family name must be less than 255 characters"),
-  variantType: z.enum(["size", "color", "size_color", "other"])
-    .default("size"),
+  variantType: z.enum(["size", "color", "size_color", "other"]),
   expectedVariants: z.array(
     z.string()
       .min(1, "Variant value is required")

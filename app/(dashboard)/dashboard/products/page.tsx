@@ -37,15 +37,24 @@ const parseNumber = (value: unknown, fallback = 0) => {
   return fallback
 }
 
-const extractId = (iriOrId: string | { [key: string]: unknown } | null | undefined) => {
+const extractId = (iriOrId: string | ProductFamily | Supplier | { [key: string]: unknown } | null | undefined): string | null => {
   if (!iriOrId) return null
   if (typeof iriOrId === "string") {
     if (!iriOrId.includes("/")) return iriOrId
     const parts = iriOrId.split("/")
     return parts[parts.length - 1] || null
   }
-  if (typeof iriOrId === "object" && typeof (iriOrId as any)["@id"] === "string") {
-    return extractId((iriOrId as any)["@id"] as string)
+  if (typeof iriOrId === "object") {
+    const record = iriOrId as any
+    if (typeof record["@id"] === "string") {
+      return extractId(record["@id"])
+    }
+    if (typeof record.productFamilyId === "string") {
+      return record.productFamilyId
+    }
+    if (typeof record.supplierId === "string") {
+      return record.supplierId
+    }
   }
   return null
 }

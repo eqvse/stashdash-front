@@ -88,7 +88,7 @@ export default function VariantStockPage({ params }: VariantStockPageProps) {
       ])
 
       const warehouseMap = new Map<string, Warehouse>()
-      warehousesResponse.member?.forEach((warehouse) => {
+      warehousesResponse.member?.forEach((warehouse: Warehouse) => {
         warehouseMap.set(`/api/warehouses/${warehouse.warehouseId}`, warehouse)
       })
 

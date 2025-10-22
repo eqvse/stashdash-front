@@ -31,12 +31,10 @@ export const productVariantFormSchema = z.object({
     .optional()
     .or(z.literal("")),
   unitCost: z
-    .coerce
-    .number({ invalid_type_error: "Enter a valid unit cost" })
+    .number()
     .min(0, "Unit cost cannot be negative"),
   sellingPrice: z
-    .coerce
-    .number({ invalid_type_error: "Enter a valid selling price" })
+    .number()
     .min(0, "Selling price cannot be negative"),
   reorderPoint: z
     .string()
@@ -56,8 +54,8 @@ export const productVariantFormSchema = z.object({
     .max(50, "Color value must be less than 50 characters")
     .optional()
     .or(z.literal("")),
-  isPrimary: z.boolean().default(false),
-  isActive: z.boolean().default(true),
+  isPrimary: z.boolean(),
+  isActive: z.boolean(),
 })
 
 export type ProductVariantFormData = z.infer<typeof productVariantFormSchema>

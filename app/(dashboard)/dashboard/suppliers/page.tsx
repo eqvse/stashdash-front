@@ -293,7 +293,7 @@ export default function SuppliersPage() {
                     <TableCell>{supplier.email ?? "—"}</TableCell>
                     <TableCell>{supplier.phone ?? "—"}</TableCell>
                     <TableCell className="text-right">{supplier.openOrders}</TableCell>
-                    <TableCell className="text-right">{(supplier.onTimeRate * 100).toFixed(0)}%</TableCell>
+                    <TableCell className="text-right">{(Number(supplier.onTimeRate) * 100).toFixed(0)}%</TableCell>
                     <TableCell className="text-right">${Number(supplier.totalSpend || 0).toLocaleString()}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex items-center justify-end gap-2">

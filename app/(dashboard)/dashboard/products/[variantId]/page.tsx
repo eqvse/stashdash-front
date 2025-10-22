@@ -14,15 +14,24 @@ import type { ProductFamily, ProductVariant, Supplier } from "@/types/api"
 
 const DEMO_VARIANTS_KEY = "demo_variants"
 
-const extractId = (value: string | { [key: string]: unknown } | null | undefined) => {
+const extractId = (value: string | ProductFamily | Supplier | { [key: string]: unknown } | null | undefined): string => {
   if (!value) return ""
   if (typeof value === "string") {
     if (!value.includes("/")) return value
     const parts = value.split("/")
     return parts[parts.length - 1] || ""
   }
-  if (typeof value === "object" && typeof (value as any)["@id"] === "string") {
-    return extractId((value as any)["@id"] as string)
+  if (typeof value === "object") {
+    const record = value as any
+    if (typeof record["@id"] === "string") {
+      return extractId(record["@id"])
+    }
+    if (typeof record.productFamilyId === "string") {
+      return record.productFamilyId
+    }
+    if (typeof record.supplierId === "string") {
+      return record.supplierId
+    }
   }
   return ""
 }

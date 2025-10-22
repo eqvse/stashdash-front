@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import React, { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { AlertCircle, ArrowLeft, Package, Save, Sparkles, Tags } from "lucide-react"
@@ -333,7 +333,7 @@ export default function AddVariantPage() {
                               </SelectItem>
                             )
                           })
-                          .filter((item): item is JSX.Element => item !== null)
+                          .filter((item): item is React.ReactElement => item !== null)
                       )}
                     </SelectContent>
                   </Select>
@@ -377,7 +377,7 @@ export default function AddVariantPage() {
                               </SelectItem>
                             )
                           })
-                          .filter((item): item is JSX.Element => item !== null)
+                          .filter((item): item is React.ReactElement => item !== null)
                       )}
                     </SelectContent>
                   </Select>
