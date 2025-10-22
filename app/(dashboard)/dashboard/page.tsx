@@ -209,9 +209,17 @@ export default function DashboardPage() {
     } catch (error) {
       console.error("Failed to load inventory movements", error)
 
-      // Always fall back to demo data when API fails
-      console.log("Falling back to demo movements")
-      setMovements(buildDemoMovements())
+      // Log detailed error information
+      if (error instanceof Error) {
+        console.error("Error message:", error.message)
+        console.error("Error stack:", error.stack)
+      }
+
+      console.error("API URL:", process.env.NEXT_PUBLIC_API_URL)
+      console.error("Company ID:", currentCompany?.companyId)
+
+      // Show error message to user instead of silently falling back
+      setMovementError(error instanceof Error ? error.message : "Could not load recent movements")
     } finally {
       setLoadingMovements(false)
     }
