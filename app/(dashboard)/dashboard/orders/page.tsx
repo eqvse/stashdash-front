@@ -96,9 +96,9 @@ export default function PurchaseOrdersPage() {
       case "OPEN":
         return <Badge variant="default">Open</Badge>
       case "PARTIAL":
-        return <Badge variant="warning" className="bg-yellow-100 text-yellow-800">Partial</Badge>
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Partial</Badge>
       case "CLOSED":
-        return <Badge variant="success" className="bg-green-100 text-green-800">Closed</Badge>
+        return <Badge variant="secondary" className="bg-green-100 text-green-800">Closed</Badge>
       case "CANCELLED":
         return <Badge variant="destructive">Cancelled</Badge>
       default:

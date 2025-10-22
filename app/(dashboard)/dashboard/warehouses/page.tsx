@@ -31,6 +31,7 @@ export default function WarehousesPage() {
     if (currentCompany) {
       loadWarehouses()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCompany])
 
   const loadWarehouses = async () => {
