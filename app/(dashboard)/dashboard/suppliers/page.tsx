@@ -56,6 +56,7 @@ export default function SuppliersPage() {
     if (currentCompany) {
       void loadSuppliers()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentCompany])
 
   const loadSuppliers = async () => {

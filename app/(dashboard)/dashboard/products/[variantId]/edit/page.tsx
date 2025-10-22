@@ -19,6 +19,7 @@ import { useCompanyStore } from "@/stores/company"
 import type { ProductFamily, ProductVariant, Supplier } from "@/types/api"
 
 const DEMO_VARIANTS_KEY = "demo_variants"
+const NONE_VALUE = "__none__"
 
 const extractId = (value: string | { [key: string]: unknown } | null | undefined) => {
   if (!value) return ""
