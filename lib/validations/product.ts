@@ -39,15 +39,11 @@ export const productVariantFormSchema = z.object({
     .number({ invalid_type_error: "Enter a valid selling price" })
     .min(0, "Selling price cannot be negative"),
   reorderPoint: z
-    .coerce
-    .number({ invalid_type_error: "Enter a valid reorder point" })
-    .nonnegative("Reorder point cannot be negative")
+    .string()
     .optional()
     .or(z.literal("")),
   reorderQty: z
-    .coerce
-    .number({ invalid_type_error: "Enter a valid reorder quantity" })
-    .positive("Reorder quantity must be positive")
+    .string()
     .optional()
     .or(z.literal("")),
   attributeSize: z
