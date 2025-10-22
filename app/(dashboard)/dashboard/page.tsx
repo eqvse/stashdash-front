@@ -209,35 +209,9 @@ export default function DashboardPage() {
     } catch (error) {
       console.error("Failed to load inventory movements", error)
 
-      if (typeof window !== "undefined") {
-        try {
-          const raw = localStorage.getItem(DEMO_VARIANTS_KEY)
-          if (raw) {
-            const parsed = JSON.parse(raw) as { variants?: ProductVariant[] }
-            const fallbackVariants = parsed.variants ?? []
-            const fallbackMoves = buildDemoMovements().map((movement) => {
-              const match = fallbackVariants.find((variant) => movement.variant.endsWith(variant.variantId))
-              if (match) {
-                const familyName = typeof match.family === "string" ? undefined : match.family?.familyName
-                const displayParts = [familyName, match.name, match.sku].filter(Boolean)
-                return {
-                  ...movement,
-                  productDisplayName: displayParts.join(" · ") || movement.productDisplayName,
-                }
-              }
-              return movement
-            })
-
-            setMovements(fallbackMoves)
-            setLoadingMovements(false)
-            return
-          }
-        } catch (fallbackError) {
-          console.warn("Failed to build fallback movements", fallbackError)
-        }
-      }
-
-      setMovementError("Could not load recent movements")
+      // Always fall back to demo data when API fails
+      console.log("Falling back to demo movements")
+      setMovements(buildDemoMovements())
     } finally {
       setLoadingMovements(false)
     }
