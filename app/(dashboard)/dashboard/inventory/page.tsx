@@ -343,7 +343,6 @@ export default function InventoryPage() {
             family: '',
             supplier: '',
             unitCost: balance.avgUnitCost,
-            marginPercent: undefined,
             isPrimary: false,
             isActive: true,
             company: currentCompany?.companyId ?? '',
