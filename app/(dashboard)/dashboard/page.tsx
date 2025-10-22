@@ -119,6 +119,14 @@ export default function DashboardPage() {
       const sorted = items
         .map((movement) => ({
           ...movement,
+          // Normalize variant to IRI string if it's an object
+          variant: typeof movement.variant === "string"
+            ? movement.variant
+            : movement.variant?.["@id"] ?? "",
+          // Normalize warehouse to IRI string if it's an object
+          warehouse: typeof movement.warehouse === "string"
+            ? movement.warehouse
+            : movement.warehouse?.["@id"] ?? "",
           qtyDelta:
             typeof movement.qtyDelta === "number"
               ? movement.qtyDelta
@@ -134,7 +142,7 @@ export default function DashboardPage() {
         new Set(
           sorted
             .map((movement) => movement.variant)
-            .filter((value): value is string => Boolean(value))
+            .filter((value): value is string => typeof value === 'string')
         )
       )
 
@@ -160,7 +168,7 @@ export default function DashboardPage() {
         new Set(
           Array.from(variantMap.values())
             .map((variant) => (typeof variant.family === "string" ? variant.family : null))
-            .filter((value): value is string => Boolean(value))
+            .filter((value): value is string => value !== null && typeof value === 'string')
         )
       )
 
@@ -496,10 +504,10 @@ function RecentMovements({ movements, metadata, loading, error, onRetry }: Recen
               </div>
               <div className="space-y-1">
                 <p className="text-sm font-medium">
-                  {movement.productDisplayName ?? movement.productName ?? movement.sku ?? movement.variant ?? "Unknown variant"}
+                  {movement.productDisplayName ?? movement.productName ?? movement.sku ?? (typeof movement.variant === "string" ? movement.variant : "Unknown variant")}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {movement.warehouseName ?? (typeof movement.warehouse === "string" ? movement.warehouse.split("/").pop() : movement.warehouse) ?? "Unknown warehouse"}
+                  {movement.warehouseName ?? (typeof movement.warehouse === "string" ? movement.warehouse.split("/").pop() : "Unknown warehouse")}
                 </p>
               </div>
             </div>
