@@ -110,11 +110,27 @@ export class ApiClient {
       headers['X-Company-Id'] = currentCompany.companyId
     }
 
+    // CRITICAL: Double-check we're not accidentally using the anon key
+    const authHeader = headers['Authorization'] as string
+    const tokenToSend = authHeader.replace('Bearer ', '')
+    const isAnonKey = tokenToSend === anonKey
+
     console.log('Headers being sent:', {
       hasAuth: !!headers['Authorization'],
       hasCompanyId: !!headers['X-Company-Id'],
-      companyId: headers['X-Company-Id'] || 'none'
+      companyId: headers['X-Company-Id'] || 'none',
+      tokenIsAnonKey: isAnonKey,
+      tokenMatchesSession: tokenToSend === session.access_token,
+      anonKeyLength: anonKey?.length || 0,
+      sessionTokenLength: session.access_token.length
     })
+
+    if (isAnonKey) {
+      console.error('CRITICAL ERROR: About to send anon key as bearer token!')
+      console.error('Session access_token:', session.access_token.substring(0, 30) + '...')
+      console.error('Anon key:', anonKey?.substring(0, 30) + '...')
+      throw new Error('Attempting to use anon key as user token - authentication misconfigured')
+    }
 
     return headers
   }
@@ -142,6 +158,21 @@ export class ApiClient {
 
     // Debug logging for authentication issues
     const headersRecord = headers as Record<string, string>
+
+    // Decode the actual token being sent to compare with what backend receives
+    let sentTokenClaims = null
+    try {
+      if (headersRecord['Authorization']) {
+        const sentToken = headersRecord['Authorization'].replace('Bearer ', '')
+        const sentTokenParts = sentToken.split('.')
+        if (sentTokenParts.length === 3) {
+          sentTokenClaims = JSON.parse(atob(sentTokenParts[1]))
+        }
+      }
+    } catch (e) {
+      console.error('Failed to decode sent token:', e)
+    }
+
     console.log('API Request Debug:', {
       method,
       endpoint,
@@ -149,8 +180,41 @@ export class ApiClient {
       authHeaderPrefix: headersRecord['Authorization'] ? String(headersRecord['Authorization']).substring(0, 20) + '...' : 'missing',
       hasCompanyHeader: !!headersRecord['X-Company-Id'],
       companyId: headersRecord['X-Company-Id'] || 'missing',
-      tokenLength: headersRecord['Authorization'] ? String(headersRecord['Authorization']).length : 0
+      tokenLength: headersRecord['Authorization'] ? String(headersRecord['Authorization']).length : 0,
+      sentTokenRole: sentTokenClaims?.role || 'unknown',
+      sentTokenHasSub: !!sentTokenClaims?.sub,
+      sentTokenIss: sentTokenClaims?.iss || 'unknown'
     })
+
+    // Final check: log what's actually in options.headers at fetch time
+    if (options.headers) {
+      let finalAuthHeader = ''
+      if (options.headers instanceof Headers) {
+        finalAuthHeader = options.headers.get('Authorization') || 'missing'
+      } else {
+        finalAuthHeader = (options.headers as Record<string, string>)['Authorization'] || 'missing'
+      }
+
+      console.log('Final fetch headers check:', {
+        headerType: options.headers instanceof Headers ? 'Headers object' : 'plain object',
+        authHeaderInFetch: finalAuthHeader.substring(0, 30) + '...',
+        authHeaderLength: finalAuthHeader.length
+      })
+
+      // Decode the final token one more time
+      if (finalAuthHeader !== 'missing') {
+        try {
+          const finalToken = finalAuthHeader.replace('Bearer ', '')
+          const finalParts = finalToken.split('.')
+          if (finalParts.length === 3) {
+            const finalPayload = JSON.parse(atob(finalParts[1]))
+            console.log('Final token being sent has role:', finalPayload.role, 'sub:', finalPayload.sub || 'MISSING')
+          }
+        } catch (e) {
+          console.error('Failed to decode final token:', e)
+        }
+      }
+    }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options)
     const contentType = response.headers.get('content-type') ?? ''
