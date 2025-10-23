@@ -53,6 +53,7 @@ export default function AddVariantPage() {
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [loadingOptions, setLoadingOptions] = useState(true)
   const [loadingError, setLoadingError] = useState<string | null>(null)
+  const [submissionError, setSubmissionError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   const form = useForm<ProductVariantFormData>({
@@ -171,11 +172,12 @@ export default function AddVariantPage() {
 
   const onSubmit = async (data: ProductVariantFormData) => {
     if (!currentCompany) {
-      form.setError("sku", { type: "manual", message: "Select a company before creating variants" })
+      setSubmissionError("Select a company before creating variants")
       return
     }
 
     setIsSubmitting(true)
+    setSubmissionError(null)
     try {
       const familyId = data.familyId === NONE_VALUE ? undefined : data.familyId?.trim() || undefined
       const supplierId = data.supplierId === NONE_VALUE ? undefined : data.supplierId?.trim() || undefined
@@ -228,8 +230,15 @@ export default function AddVariantPage() {
       router.push("/dashboard/products")
     } catch (error) {
       console.error("Failed to create variant", error)
-      const message = error instanceof Error ? error.message : "Failed to create variant"
-      form.setError("sku", { type: "manual", message })
+
+      // Extract the user-friendly error message from the API response
+      let message = "Failed to create variant"
+      if (error instanceof Error) {
+        // The error message might be the parsed API error detail already
+        message = error.message
+      }
+
+      setSubmissionError(message)
     } finally {
       setIsSubmitting(false)
     }
@@ -260,6 +269,16 @@ export default function AddVariantPage() {
       </div>
 
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {submissionError && (
+          <div className="flex items-start gap-3 rounded-lg border border-destructive/50 bg-destructive/10 p-4">
+            <AlertCircle className="h-5 w-5 text-destructive flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-medium text-destructive">Error Creating Variant</p>
+              <p className="text-sm text-destructive/90 mt-1">{submissionError}</p>
+            </div>
+          </div>
+        )}
+
         <Card>
           <CardHeader className="space-y-2">
             <div className="flex items-center gap-2">
