@@ -29,8 +29,19 @@ export class ApiClient {
   private supabase = createClient()
 
   private async getAuthHeaders(): Promise<HeadersInit> {
+    // First, try to refresh the session to ensure we have a fresh token
+    console.log('Attempting to refresh session...')
+    const { data: refreshData, error: refreshError } = await this.supabase.auth.refreshSession()
+
+    if (refreshError) {
+      console.warn('Session refresh failed:', refreshError.message)
+      // If refresh fails, fall back to checking existing session
+    } else if (refreshData.session) {
+      console.log('Session refreshed successfully! New token obtained.')
+    }
+
     // Use getUser() to validate the token is still valid
-    // This also refreshes the session if needed
+    // This validates against Supabase and ensures user is authenticated
     const { data: { user }, error: userError } = await this.supabase.auth.getUser()
 
     if (userError) {
@@ -43,7 +54,7 @@ export class ApiClient {
       throw new Error('Not authenticated - no user')
     }
 
-    // Now get the session which should have a fresh token
+    // Now get the session which should have a fresh token (either refreshed or existing)
     const { data: { session }, error } = await this.supabase.auth.getSession()
 
     console.log('Supabase Session Debug:', {
