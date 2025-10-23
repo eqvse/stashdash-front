@@ -32,12 +32,22 @@ export class ApiClient {
     // Get the current session and refresh if needed
     const { data: { session }, error } = await this.supabase.auth.getSession()
 
+    console.log('Supabase Session Debug:', {
+      hasSession: !!session,
+      hasAccessToken: !!session?.access_token,
+      hasError: !!error,
+      tokenPreview: session?.access_token ? session.access_token.substring(0, 30) + '...' : 'none',
+      userEmail: session?.user?.email || 'none',
+      userId: session?.user?.id || 'none'
+    })
+
     if (error) {
       console.error('Supabase auth error:', error)
       throw new Error(`Authentication error: ${error.message}`)
     }
 
     if (!session?.access_token) {
+      console.error('No session or access token available')
       throw new Error('Not authenticated - no access token available')
     }
 
@@ -60,6 +70,12 @@ export class ApiClient {
     if (currentCompany?.companyId) {
       headers['X-Company-Id'] = currentCompany.companyId
     }
+
+    console.log('Headers being sent:', {
+      hasAuth: !!headers['Authorization'],
+      hasCompanyId: !!headers['X-Company-Id'],
+      companyId: headers['X-Company-Id'] || 'none'
+    })
 
     return headers
   }
@@ -86,18 +102,16 @@ export class ApiClient {
     }
 
     // Debug logging for authentication issues
-    if (process.env.NODE_ENV !== 'production') {
-      console.debug('API Request:', {
-        method,
-        endpoint,
-        headers: Object.fromEntries(
-          Object.entries(headers).map(([k, v]) => [
-            k,
-            k === 'Authorization' ? `Bearer ${String(v).substring(7, 20)}...` : v
-          ])
-        )
-      })
-    }
+    const headersRecord = headers as Record<string, string>
+    console.log('API Request Debug:', {
+      method,
+      endpoint,
+      hasAuthHeader: !!headersRecord['Authorization'],
+      authHeaderPrefix: headersRecord['Authorization'] ? String(headersRecord['Authorization']).substring(0, 20) + '...' : 'missing',
+      hasCompanyHeader: !!headersRecord['X-Company-Id'],
+      companyId: headersRecord['X-Company-Id'] || 'missing',
+      tokenLength: headersRecord['Authorization'] ? String(headersRecord['Authorization']).length : 0
+    })
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options)
     const contentType = response.headers.get('content-type') ?? ''
@@ -138,14 +152,19 @@ export class ApiClient {
       console.error('API Error Response:', {
         status: response.status,
         statusText: response.statusText,
+        endpoint,
         contentType,
-        payload
+        payload: JSON.stringify(payload, null, 2)
       })
 
       if (isJson && payload) {
         const error = payload as ApiError
         const errorObj = payload as any
-        const detail = error.detail || error.title || errorObj['hydra:description']
+        const detail = error.detail || error.title || errorObj['hydra:description'] || errorObj.message
+
+        // Log the specific error message we're throwing
+        console.error('Throwing error:', detail || `API request failed (${response.status})`)
+
         throw new Error(detail || `API request failed (${response.status})`)
       }
 
