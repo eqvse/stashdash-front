@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/client'
-import type { 
-  ApiResponse, 
+import { useCompanyStore } from '@/stores/company'
+import type {
+  ApiResponse,
   ApiError,
   ProductVariant,
   ProductVariantInput,
@@ -29,16 +30,25 @@ export class ApiClient {
 
   private async getAuthHeaders(): Promise<HeadersInit> {
     const { data: { session } } = await this.supabase.auth.getSession()
-    
+
     if (!session) {
       throw new Error('Not authenticated')
     }
 
-    return {
+    const headers: HeadersInit = {
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
       'Accept': 'application/json, application/ld+json',
     }
+
+    // Add X-Company-Id header for tenant scoping
+    // Required by backend for multi-tenant security
+    const { currentCompany } = useCompanyStore.getState()
+    if (currentCompany?.companyId) {
+      headers['X-Company-Id'] = currentCompany.companyId
+    }
+
+    return headers
   }
 
   private async request<T>(
