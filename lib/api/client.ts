@@ -73,6 +73,30 @@ export class ApiClient {
       throw new Error('Invalid authentication - using anon key')
     }
 
+    // Decode and inspect the JWT token to verify it has the required claims
+    try {
+      const tokenParts = session.access_token.split('.')
+      if (tokenParts.length === 3) {
+        const payload = JSON.parse(atob(tokenParts[1]))
+        console.log('JWT Token Claims:', {
+          hasSub: !!payload.sub,
+          sub: payload.sub || 'MISSING',
+          email: payload.email || 'MISSING',
+          role: payload.role || 'MISSING',
+          iss: payload.iss || 'MISSING',
+          exp: payload.exp ? new Date(payload.exp * 1000).toISOString() : 'MISSING',
+          iat: payload.iat ? new Date(payload.iat * 1000).toISOString() : 'MISSING'
+        })
+
+        if (!payload.sub) {
+          console.error('JWT token is missing sub claim!')
+          console.error('Full token payload:', payload)
+        }
+      }
+    } catch (e) {
+      console.error('Failed to decode JWT token:', e)
+    }
+
     const headers: HeadersInit = {
       'Authorization': `Bearer ${session.access_token}`,
       'Content-Type': 'application/json',
