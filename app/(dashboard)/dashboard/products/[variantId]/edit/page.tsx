@@ -286,6 +286,7 @@ export default function EditVariantPage({ params }: EditVariantPageProps) {
         }
       } else {
         await apiClient.updateProductVariant(variantId, {
+          company: currentCompany.companyId,
           sku: data.sku.trim(),
           name: data.name.trim(),
           description: data.description?.trim() || undefined,
@@ -293,6 +294,7 @@ export default function EditVariantPage({ params }: EditVariantPageProps) {
           supplier: supplierId,
           supplierSku: data.supplierSku?.trim() || undefined,
           unitCost: data.unitCost,
+          sellingPrice: data.sellingPrice,
           reorderPoint: toOptionalNumber(data.reorderPoint),
           reorderQty: toOptionalNumber(data.reorderQty),
           variantAttributes: buildVariantAttributePayload(data),
