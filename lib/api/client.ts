@@ -341,6 +341,11 @@ export class ApiClient {
   ): Promise<ProductVariant> {
     const payload: Record<string, unknown> = {}
 
+    if (data.company !== undefined) {
+      payload.company = data.company.includes('/api/companies/')
+        ? data.company
+        : `/api/companies/${data.company}`
+    }
     if (data.sku !== undefined) payload.sku = data.sku
     if (data.name !== undefined) payload.name = data.name
     if (data.description !== undefined) payload.description = data.description
