@@ -233,9 +233,36 @@ export default function AddVariantPage() {
 
       // Extract the user-friendly error message from the API response
       let message = "Failed to create variant"
+
       if (error instanceof Error) {
-        // The error message might be the parsed API error detail already
-        message = error.message
+        const errorMessage = error.message
+
+        // Try to parse if it looks like JSON
+        if (errorMessage.startsWith('{')) {
+          try {
+            const parsed = JSON.parse(errorMessage)
+
+            // Extract from violations array if available
+            if (parsed.violations && Array.isArray(parsed.violations) && parsed.violations.length > 0) {
+              message = parsed.violations[0].message || message
+            }
+            // Otherwise use detail field, removing the "propertyPath: " prefix
+            else if (parsed.detail) {
+              message = parsed.detail.replace(/^[a-zA-Z]+:\s*/, '')
+            }
+            // Otherwise use description
+            else if (parsed.description) {
+              message = parsed.description.replace(/^[a-zA-Z]+:\s*/, '')
+            }
+          } catch (parseError) {
+            // If parsing fails, use the error message as-is
+            message = errorMessage
+          }
+        } else {
+          // If it doesn't look like JSON, use the message directly
+          // But still try to strip "propertyPath: " prefix
+          message = errorMessage.replace(/^[a-zA-Z]+:\s*/, '')
+        }
       }
 
       setSubmissionError(message)
