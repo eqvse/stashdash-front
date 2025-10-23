@@ -484,19 +484,6 @@ export default function EditVariantPage({ params }: EditVariantPageProps) {
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="sellingPrice">Selling Price</Label>
-                <Input
-                  id="sellingPrice"
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  {...form.register("sellingPrice", { valueAsNumber: true })}
-                />
-                {form.formState.errors.sellingPrice && (
-                  <p className="text-sm text-destructive">{form.formState.errors.sellingPrice.message}</p>
-                )}
-              </div>
-              <div className="space-y-2">
                 <Label htmlFor="supplierSku">Supplier SKU</Label>
                 <Input id="supplierSku" {...form.register("supplierSku")}
                   placeholder="Optional supplier reference"
