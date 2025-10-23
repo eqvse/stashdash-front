@@ -29,10 +29,23 @@ export class ApiClient {
   private supabase = createClient()
 
   private async getAuthHeaders(): Promise<HeadersInit> {
-    const { data: { session } } = await this.supabase.auth.getSession()
+    // Get the current session and refresh if needed
+    const { data: { session }, error } = await this.supabase.auth.getSession()
 
-    if (!session) {
-      throw new Error('Not authenticated')
+    if (error) {
+      console.error('Supabase auth error:', error)
+      throw new Error(`Authentication error: ${error.message}`)
+    }
+
+    if (!session?.access_token) {
+      throw new Error('Not authenticated - no access token available')
+    }
+
+    // Validate the access token is not the anon key
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (session.access_token === anonKey) {
+      console.error('Attempted to use anon key as access token!')
+      throw new Error('Invalid authentication - using anon key')
     }
 
     const headers: HeadersInit = {
@@ -57,12 +70,12 @@ export class ApiClient {
     body?: any
   ): Promise<T> {
     const headers = await this.getAuthHeaders()
-    
+
     const options: RequestInit = {
       method,
       headers,
     }
-    
+
     if (body !== undefined) {
       options.body = JSON.stringify(body)
     } else if (method === 'GET' || method === 'HEAD') {
@@ -70,6 +83,20 @@ export class ApiClient {
       const headersObj = new Headers(options.headers)
       headersObj.delete('Content-Type')
       options.headers = headersObj
+    }
+
+    // Debug logging for authentication issues
+    if (process.env.NODE_ENV !== 'production') {
+      console.debug('API Request:', {
+        method,
+        endpoint,
+        headers: Object.fromEntries(
+          Object.entries(headers).map(([k, v]) => [
+            k,
+            k === 'Authorization' ? `Bearer ${String(v).substring(7, 20)}...` : v
+          ])
+        )
+      })
     }
 
     const response = await fetch(`${API_BASE_URL}${endpoint}`, options)
@@ -107,9 +134,18 @@ export class ApiClient {
     }
 
     if (!response.ok) {
+      // Enhanced error logging for debugging
+      console.error('API Error Response:', {
+        status: response.status,
+        statusText: response.statusText,
+        contentType,
+        payload
+      })
+
       if (isJson && payload) {
         const error = payload as ApiError
-        const detail = error.detail || error.title
+        const errorObj = payload as any
+        const detail = error.detail || error.title || errorObj['hydra:description']
         throw new Error(detail || `API request failed (${response.status})`)
       }
 
