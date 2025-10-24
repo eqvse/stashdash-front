@@ -239,6 +239,30 @@ export interface SupplierInput {
   notes?: string
 }
 
+export interface ApiKey {
+  id: string
+  name: string
+  company: string | Company
+  scopes: string[] | null
+  createdAt: string
+  lastUsedAt: string | null
+  revokedAt: string | null
+}
+
+export interface ApiKeyCreateResponse {
+  id: string
+  name: string
+  company: string
+  scopes: string[] | null
+  createdAt: string
+  plainTextKey: string
+}
+
+export interface ApiKeyInput {
+  name: string
+  scopes?: string[]
+}
+
 // Form input types
 export interface ProductFamilyInput {
   familyName: string

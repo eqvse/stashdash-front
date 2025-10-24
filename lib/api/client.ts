@@ -20,7 +20,10 @@ import type {
   Company,
   CompanyUser,
   Supplier,
-  SupplierInput
+  SupplierInput,
+  ApiKey,
+  ApiKeyCreateResponse,
+  ApiKeyInput
 } from '@/types/api'
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api'
@@ -971,6 +974,19 @@ export class ApiClient {
       sourceLineId: lineId,
       note: `Receipt for PO ${poId}`
     })
+  }
+
+  // API Key Management
+  async getApiKeys(): Promise<ApiResponse<ApiKey>> {
+    return this.request('GET', '/api_keys')
+  }
+
+  async createApiKey(data: ApiKeyInput): Promise<ApiKeyCreateResponse> {
+    return this.request('POST', '/api_keys', data)
+  }
+
+  async deleteApiKey(id: string): Promise<void> {
+    return this.request('DELETE', `/api_keys/${id}`)
   }
 
   // Real-time subscriptions
