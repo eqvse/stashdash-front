@@ -15,7 +15,6 @@ import { z } from "zod"
 
 // Password change schema
 const passwordSchema = z.object({
-  currentPassword: z.string().min(6, "Password must be at least 6 characters"),
   newPassword: z.string().min(6, "Password must be at least 6 characters"),
   confirmPassword: z.string().min(6, "Password must be at least 6 characters"),
 }).refine((data) => data.newPassword === data.confirmPassword, {
@@ -201,19 +200,6 @@ export default function SettingsPage() {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit(onPasswordSubmit)} className="space-y-4">
-              <div className="grid gap-2">
-                <Label htmlFor="currentPassword">Current Password</Label>
-                <Input
-                  id="currentPassword"
-                  type="password"
-                  {...register("currentPassword")}
-                  disabled={passwordLoading}
-                />
-                {errors.currentPassword && (
-                  <p className="text-sm text-destructive">{errors.currentPassword.message}</p>
-                )}
-              </div>
-
               <div className="grid gap-2">
                 <Label htmlFor="newPassword">New Password</Label>
                 <Input
