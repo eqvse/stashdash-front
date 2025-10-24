@@ -53,8 +53,8 @@ export default function DashboardLayout({
         
         // Fallback: Create a mock company for development
         const mockCompany = {
-          companyId: "dev-company-1",
-          name: "Demo Company",
+          companyId: "01995404-8cba-7ac7-8a11-bd0cb0c722a5",
+          name: "Test Company API",
           createdAt: new Date().toISOString()
         }
         
