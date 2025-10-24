@@ -395,7 +395,7 @@ export default function SettingsPage() {
                   </Button>
                 </div>
                 <p className="text-sm text-yellow-800">
-                  ⚠️ Make sure to copy this key now. You won't be able to see it again!
+                  ⚠️ Make sure to copy this key now. You won&apos;t be able to see it again!
                 </p>
               </div>
             )}
